@@ -1,63 +1,108 @@
+get_SEIR <- function (nr_sample, times, params, looped_parameters, iter) {
+  res <- lapply(seq_len(nr_sample), function(i) {
+    sol <- suppressWarnings(model_gen(user = as.list(params[i, ]))$run(times))
+    sol <- data.frame(sol, p = params$p[i], id_sample = i)
+  })
+  res <- do.call(bind_rows, res)
+  res <- cbind(res, as.list(looped_parameters))
+  
+  # check disease has died out
+  disease_ongoing <- res %>%
+    select(S, t, id_sample) %>%
+    filter(t %in% c(max(t), max(t) - 1)) %>%
+    group_by(id_sample) %>%
+    summarise(diff_S = -diff(S)) %>%
+    ungroup() %>%
+    summarise(upper_quantile = unname(quantile(diff_S, 0.975)) > 0.5) %>%
+    pull()
+  
+  if (disease_ongoing)
+    stop("Disease is ongoing", iter)
+  
+  return(res)
+}
+
 # Clean the output of the model run
 clean_mcmc_results <- function (dir_output, nr_burnin, nr_sample) {
-
+  
   set.seed(1)
-
+  
   # initialise lists
   SEIR             <- list()
   acceptance_rate  <- list()
   random_walk_rate <- list()
-
+  
   # loop over MCMC output files
   files <- list.files(path = dir_output, pattern = "^results", full.names = TRUE)
   for (iter in seq_along(files)) {
-
+    
+    # read in -----------------------------------------------------------------#
     results <- readRDS(files[iter])
     fixed_parameters  <- results$fixed_parameters
     looped_parameters <- results$looped_parameters
+    posterior         <- data.frame(results$posterior)
 
-    # compute posterior -------------------------------------------------------#
+    # save all posteriors -----------------------------------------------------#
     # remove burnin
-    posterior_log <- results$log_likelihood[-seq(1, nr_burnin, 1)]
-    posterior_fit <- results$fitted_parameters[-seq(1, nr_burnin, 1), ]
-
-    # clean and write to file
-    posterior <- list(posterior = cbind("log-likelihood" = posterior_log,
-                                        posterior_fit,
-                                        "1-w" = 1 - posterior_fit[, "w"]),
-                      fixed_parameters  = fixed_parameters,
-                      looped_parameters = looped_parameters)
-    saveRDS(posterior, file.path(dir_output, paste0("posterior_", sprintf("%02d", iter), ".rds")))
-
-    # compute SEIR models -----------------------------------------------------#
-    # solve nr_sample consecutive SEIR models
-    sample_fit <- apply(posterior_fit, 2, sample, nr_sample)
-    times <- seq(fixed_parameters["tSeed"], fixed_parameters["time2"], 1)
-    SEIR[[iter]] <- lapply(seq_len(nr_sample), function(i) {
-      params <- c(sample_fit[i, ], looped_parameters, fixed_parameters)
-      sol <- solve_seir(params, times)
-      sol <- data.frame(sol, id_sample = i)
-    })
-    SEIR[[iter]] <- do.call(bind_rows, SEIR[[iter]])
-    SEIR[[iter]] <- cbind(SEIR[[iter]], as.list(looped_parameters))
-
-    # save acceptance rate and random walk rate -------------------------------#
-    acceptance_rate[[iter]] <- melt(results$acceptance_rate)
-    acceptance_rate[[iter]]  <- c(results$acceptance_rate, results$looped_parameters)
+    posterior <- posterior[posterior[, "iter_mcmc"] > nr_burnin, ]
+    
+    posterior_all_chains <- list(posterior         = posterior,
+                                 fixed_parameters  = fixed_parameters,
+                                 looped_parameters = looped_parameters)
+    saveRDS(posterior_all_chains, file.path(dir_output, paste0(
+      "posterior_all_chains_", sprintf("%02d", iter), ".rds")))
+    
+    # save acceptance rate ----------------------------------------------------#
+    acceptance_rate[[iter]] <- cbind(results$acceptance_rate,
+                                     data.frame(as.list(looped_parameters)))
+    
+    # save random walk rate ---------------------------------------------------#
     random_walk_rate[[iter]] <- melt(results$random_walk_rate)
     random_walk_rate[[iter]] <- cbind(random_walk_rate[[iter]][, -1],
-                                      as.list(results$looped_parameters))
-
+                                      as.list(looped_parameters))
+    
+    # select best chain -------------------------------------------------------#
+    # best chain
+    best_chain <- posterior %>%
+      group_by(chain) %>%
+      summarise(mean_ll = mean(ll)) %>%
+      ungroup() %>%
+      filter(mean_ll == max(mean_ll)) %>%
+      select(chain) %>%
+      pull()
+    posterior <- posterior %>% filter(chain == best_chain) %>% select(-chain)
+    
+    # save to file
+    posterior_best_chain <- list(posterior         = posterior,
+                                 fixed_parameters  = fixed_parameters,
+                                 looped_parameters = looped_parameters)
+    saveRDS(posterior_best_chain, file.path(dir_output, paste0(
+      "posterior_best_chain_", sprintf("%02d", iter), ".rds")))
+    
+    # compute SEIR models -----------------------------------------------------#
+    # solve nr_sample consecutive SEIR models
+    times <- seq(fixed_parameters["tSeed"], 200, 1)
+    id_sample <- sample(seq_len(nrow(posterior)), nr_sample)
+    
+    params <- cbind(posterior[id_sample, ], as.list(looped_parameters), as.list(fixed_parameters))
+    SEIR_with_lockdown <- get_SEIR(nr_sample, times, params, looped_parameters, iter)
+    SEIR_with_lockdown$Lockdown <- "Yes"
+    
+    params$w <- 1
+    SEIR_without_lockdown <- get_SEIR(nr_sample, times, params, looped_parameters, iter)
+    SEIR_without_lockdown$Lockdown <- "No"
+    
+    SEIR[[iter]] <- rbind(SEIR_with_lockdown, SEIR_without_lockdown)
   }
-
+  
   # clean lists and save to file
   SEIR             <- do.call(bind_rows, SEIR)
   SEIR             <- list(SEIR = SEIR, fixed_parameters = fixed_parameters)
   acceptance_rate  <- do.call(bind_rows, acceptance_rate)
   random_walk_rate <- do.call(bind_rows, random_walk_rate)
-
+  
   saveRDS(SEIR,             file.path(dir_output, "SEIR.rds"))
   saveRDS(acceptance_rate,  file.path(dir_output, "acceptance_rate.rds"))
   saveRDS(random_walk_rate, file.path(dir_output, "random_walk_rate.rds"))
-
+  
 }

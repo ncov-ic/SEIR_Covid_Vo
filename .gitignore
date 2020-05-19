@@ -2,3 +2,6 @@ figures/
 output/
 docs/
 tables.Rmd
+*.Rproj
+.Rproj*
+.Rproj.user
