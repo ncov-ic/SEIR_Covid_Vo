@@ -5,11 +5,12 @@
 #                                                                              #
 # Cite as:                                                                     #
 # Lavezzo et. al., 2020, Suppression of COVID-19 outbreak in the municipality  #
-# of Vo, Italy, medRxiv, doi: 10.1101/2020.04.17.20053157                                                                #
+# of Vo, Italy, medRxiv, doi: 10.1101/2020.04.17.20053157                      #
 #                                                                              #
 # Input data:                                                                  #
-# - observed number of negative, symptomatic and asymptomatic individuals      #
-#   after two screening runs of large parts of the population of Vo' Euganeo   #
+# - observed number of negative, pre-symptomatic, symptomatic and asymptomatic #
+#   individuals after two screening runs of large parts of the population of   #
+#   the municipality of Vo, Italy in February and March 2020                   #
 #                                                                              #
 # Descriptions of classes/compartments:                                        #
 # S    : susceptible individuals                                               #
