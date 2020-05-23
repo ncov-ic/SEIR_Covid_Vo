@@ -1,5 +1,5 @@
 get_dates <- function (my.times) {
-  
+
   full.dates <- c(paste0(sprintf("%02d", 4:29), "/02"),
                   paste0(sprintf("%02d", 1:31), "/03"),
                   paste0(sprintf("%02d", 1:30), "/04"),
@@ -12,102 +12,106 @@ get_dates <- function (my.times) {
   full.dates <- full.dates[1:max(my.times + 1)]
   my.dates <- character(length = length(full.dates))
   my.dates[my.times + 1] <- full.dates[my.times + 1]
-  
+
   return(my.dates)
-  
+
 }
 
-fig_chains <- function (dir_output, dir_figures) {
-  
+fig_chains <- function (dir_clean, dir_figures) {
+
   # loop over posterior files
-  files <- list.files(path = dir_output, pattern = "^posterior_all_chains_",
+  files <- list.files(path = dir_clean, pattern = "^posterior_all_chains_",
                       full.names = TRUE)
   for (iter in seq_along(files)) {
-    
+
     # extract data
     dt <- readRDS(files[iter])
     posterior         <- dt$posterior
     looped_parameters <- dt$looped_parameters
-    
+
     # melt data
-    posterior <- melt(posterior, id.vars = c("iter_mcmc", "chain"))
-    posterior$chain <- as.factor(as.integer(posterior$chain))
-    
+    posterior <- gather(posterior, "variable", "value", -iter, -chain) %>%
+      mutate(chain    = as.factor(chain),
+             variable = as.factor(variable) %>% relevel("ll"))
+
     # title
     title <- paste("R0_1 =",        looped_parameters["R0_1"],
                    ", 1/sigma =", 1/looped_parameters["sigma"])
-    
-    p <- ggplot(data = posterior, aes(x = iter_mcmc, y = value,
+
+    p <- ggplot(data = posterior, aes(x = iter, y = value,
                                       group = chain, colour = chain)) +
       geom_line() +
       facet_wrap(vars(variable), scales = "free_y", ncol = 2) +
       ggtitle(title)
-    
+
     p
-    
-    ggsave(filename = file.path(dir_figures, paste0("mcmc_chains_", sprintf("%02d", iter), ".png")),
+
+    ggsave(filename = file.path(dir_figures, paste0("mcmc_chains_", iter, ".png")),
            plot = p, device = "png",
            width = 17, height = 20, units = "cm", dpi = 300, limitsize = TRUE)
-    
+
   }
-  
+
 }
 
-fig_acceptance_rates <- function (dir_output, dir_figures) {
-  
+fig_acceptance_rates <- function (dir_clean, dir_figures) {
+
   # read in
-  dt <- readRDS(file.path(dir_output, "acceptance_rate.rds"))
-  
+  dt <- readRDS(file.path(dir_clean, "acceptance_rate.rds"))
+
   # melt
-  dt <- melt(dt, id.vars = c("R0_1", "sigma", "chain"))
+  dt <- gather(dt, "variable", "value", -R0_1, -sigma, -chain)
   dt$chain <- as.factor(as.integer(dt$chain))
-  
+
   p <- ggplot(data = dt, aes(x = value, fill = chain)) +
     geom_histogram(alpha = 0.5, position = "identity") +
     facet_wrap(vars(variable))
-  
+
   p
-  
+
   ggsave(filename = file.path(dir_figures, "acceptance_rate.png"),
          plot = p, device = "png",
          width = 17, height = 20, units = "cm", dpi = 300, limitsize = TRUE)
-  
+
 }
 
-get_best_fit <- function (dir_output) {
-  
-  # get best in terms of log-likelihood
-  readRDS(file.path(dir_output, "table.rds")) %>%
-    mutate(ll = as.numeric(gsub(" .*","", ll)),
-           sigma = 1/`1/sigma`) %>%
-    filter(ll == max(ll)) %>%
+get_best_fit <- function (dir_clean) {
+
+  # get best in terms of DIC
+  readRDS(file.path(dir_clean, "table.rds")) %>%
+    filter(R0_1 < 2.8 & `1/sigma` < 13) %>%
+    mutate(sigma = 1/as.numeric(`1/sigma`)) %>%
+    filter(DIC == min(DIC, na.rm = TRUE)) %>%
     select(R0_1, sigma)
-  
+
 }
 
-fig_prevalence <- function (dir_output, dir_figures, data, do.best) {
-  
+fig_prevalence <- function (dir_clean, dir_figures, data, do) {
+
   # get compartment counts
-  SEIR <- readRDS(file.path(dir_output, "SEIR.rds"))
-  fixed_parameters <- SEIR$fixed_parameters
-  dt <- SEIR$SEIR
-  
+  dt <- readRDS(file.path(dir_clean, "SEIR.rds"))
+  fixed_parameters <- dt %>%
+    select(time1, time2, tQ, tSeed, N) %>%
+    unique() %>%
+    unlist()
+
   # select best model in terms of log-likelihood
-  if (do.best) {
-    best_fit <- get_best_fit(dir_output)
-    dt <- dt %>% right_join(best_fit)
+  if (do == "best_DIC") {
+    dt <- dt %>% right_join(get_best_fit(dir_clean))
+  } else if (do == "paper_estimate") {
+    dt <- dt %>% filter(R0_1 == 2.4 & 1/sigma == 4)
   }
-  
+
   # Compute prevalence by pre-symptomatic, symptomatic and asymptomatic
   dt <- dt %>%
-    filter(Lockdown == "Yes" & t < fixed_parameters["time2"] + 0.5) %>%
+    filter(Lockdown == "Yes" &
+             t < fixed_parameters["time2"] + 0.5) %>%
     # summarise compartments of interest
     transmute(t, R0_1, sigma,
               Presymptomatic = (1 - p) * TPp,
               Symptomatic    = I_S + TP_S,
               Asymptomatic   = p * TPp + I_A + TP_A) %>%
-    melt(id.vars = c("t", "R0_1", "sigma"),
-         variable.name = "Compartment") %>%
+    gather("Compartment", "value", -t, -R0_1, -sigma) %>%
     # compute mean and 95% CrI
     group_by(t, R0_1, sigma, Compartment) %>%
     mutate(value = 100 * value / fixed_parameters["N"]) %>%
@@ -117,15 +121,15 @@ fig_prevalence <- function (dir_output, dir_figures, data, do.best) {
     ungroup() %>%
     # column names for plotting
     mutate(R0_1  = paste("R0 =", R0_1),
-           sigma = paste("1/sigma =", round(1/sigma)) %>% 
+           sigma = paste("1/sigma =", round(1/sigma)) %>%
              factor(paste("1/sigma =", 1:30)),
            Compartment = sub("Presym", "Pre-sym", Compartment) %>%
              factor(c("Pre-symptomatic", "Symptomatic", "Asymptomatic")))
-  
+
   # Screening data
   data$Time <- fixed_parameters[c("time1", "time2")]
   my.data <- data %>%
-    melt(id.vars = c("Time", "Tested"), variable.name = "Compartment") %>%
+    gather("Compartment", "value", -Time, -Tested) %>%
     group_by(Time, Tested, Compartment) %>%
     summarise(value = sum(value)) %>%
     ungroup() %>%                           # don't remove this and following line
@@ -137,13 +141,13 @@ fig_prevalence <- function (dir_output, dir_figures, data, do.best) {
     # column names for plotting
     mutate(Compartment = sub("Presym", "Pre-sym", Compartment) %>%
              factor(c("Pre-symptomatic", "Symptomatic", "Asymptomatic")))
-  
+
   # Dates for x axis
-  my.times <- unlist(fixed_parameters[c("tSeed", "tQ", "time2")])
+  my.times <- fixed_parameters[c("tSeed", "tQ", "time2")]
   my.dates <- get_dates(my.times)
-  
+
   # Plot
-  if (do.best) {
+  if (do != "all") {
     dotsize <- 1
     errorsize <- 1.2
     dashsize <- .3
@@ -152,7 +156,7 @@ fig_prevalence <- function (dir_output, dir_figures, data, do.best) {
     errorsize <- 2
     dashsize <- .2
   }
-  
+
   p <- ggplot(data = dt,
               aes(x = t, colour = Compartment, fill = Compartment)) +
     # model mean and 95% CrI
@@ -180,9 +184,9 @@ fig_prevalence <- function (dir_output, dir_figures, data, do.best) {
           legend.box.margin = margin(-8, 0, 0, 0),
           # Nature requirement:
           text = element_text(size = 7, family = "sans"))
-  
+
   # faceting
-  if (do.best) {
+  if (do != "all") {
     p <- p +
       theme(legend.position = "right",
             plot.tag = element_text(size = 8, face = "bold", family = "sans")) +
@@ -192,23 +196,31 @@ fig_prevalence <- function (dir_output, dir_figures, data, do.best) {
       facet_grid(rows = vars(R0_1), cols = vars(sigma)) +
       theme(legend.position = "bottom")
   }
-  
+
   p
-  
+
   return(p)
-  
+
 }
 
-fig_incidence <- function (dir_output) {
-  
+fig_incidence <- function (dir_clean, do) {
+
   # get compartment counts
-  SEIR <- readRDS(file.path(dir_output, "SEIR.rds"))
-  fixed_parameters <- SEIR$fixed_parameters
-  dt <- SEIR$SEIR
-  
+  dt <- readRDS(file.path(dir_clean, "SEIR.rds"))
+  fixed_parameters <- dt %>%
+    select(time1, time2, tQ, tSeed, N) %>%
+    unique() %>%
+    unlist()
+
   # select best model in terms of log-likelihood
-  best_fit <- get_best_fit(dir_output)
-  dt <- dt %>% right_join(best_fit) %>%
+  if (do == "best_DIC") {
+    dt <- dt %>% right_join(get_best_fit(dir_clean))
+  } else if (do == "paper_estimate") {
+    dt <- dt %>% filter(R0_1 == 2.4 & 1/sigma == 4)
+  }
+
+  # clean data
+  dt <- dt %>%
     arrange(t) %>%
     group_by(id_sample, Lockdown) %>%
     # summarise compartments of interest
@@ -221,7 +233,7 @@ fig_incidence <- function (dir_output) {
               low  = quantile(incid, probs = 0.025),
               high = quantile(incid, probs = 0.975)) %>%
     ungroup()
-  
+
   # find time of disease termination
   time_final <- dt %>%
     filter(mean > 0.01) %>%
@@ -229,13 +241,13 @@ fig_incidence <- function (dir_output) {
     pull()
   dt <- dt %>%
     filter(t < time_final + 0.5)
-  
+
   # Dates for x axis
   my.times <- c(fixed_parameters[c("tSeed", "tQ", "time2")], time_final)
   ## add a date in the last long interval
   my.times <- sort(c(my.times, as.integer(mean(rev(my.times)[1:2]))))
   my.dates <- get_dates(unname(my.times))
-  
+
   # Plot
   p <- ggplot(data = dt,
               aes(x = t, colour = Lockdown, fill = Lockdown)) +
@@ -250,9 +262,10 @@ fig_incidence <- function (dir_output) {
     # colour palette and legend
     scale_colour_brewer("", palette = "Set1") +
     scale_fill_brewer("", palette = "Set1") +
+    scale_y_continuous(breaks = 0:5) +
     scale_x_continuous(name = "Date",
                        breaks = my.times,
-                       minor_breaks = seq(1, max(my.times), 7),
+                       minor_breaks = seq(min(my.times), max(my.times), 7),
                        labels = my.dates[which(my.dates != "")]) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           legend.position = "none",
@@ -262,24 +275,31 @@ fig_incidence <- function (dir_output) {
           text = element_text(size = 7, family = "sans"),
           plot.tag = element_text(size = 8, face = "bold", family = "sans")) +
     labs(tag = "b")
-  
+
   p
-  
+
   return(p)
-  
+
 }
 
-fig_final_size <- function (dir_output) {
-  
+fig_final_size <- function (dir_clean, do) {
+
   # get compartment counts
-  SEIR <- readRDS(file.path(dir_output, "SEIR.rds"))
-  fixed_parameters <- SEIR$fixed_parameters
-  dt <- SEIR$SEIR
+  dt <- readRDS(file.path(dir_clean, "SEIR.rds"))
+  fixed_parameters <- dt %>%
+    select(time1, time2, tQ, tSeed, N) %>%
+    unique() %>%
+    unlist()
   
   # select best model in terms of log-likelihood
-  best_fit <- get_best_fit(dir_output)
+  if (do == "best_DIC") {
+    dt <- dt %>% right_join(get_best_fit(dir_clean))
+  } else if (do == "paper_estimate") {
+    dt <- dt %>% filter(R0_1 == 2.4 & 1/sigma == 4)
+  }
+
+  # clean data
   dt <- dt %>%
-    right_join(best_fit) %>%
     # only keep last time step
     filter(t == max(t)) %>%
     # summarise compartments of interest
@@ -290,14 +310,16 @@ fig_final_size <- function (dir_output) {
               low  = quantile(final_size, probs = 0.025),
               high = quantile(final_size, probs = 0.975)) %>%
     ungroup()
-  
+
   # Plot
   p <- ggplot(data = dt, aes(x = Lockdown, y = mean, fill = Lockdown)) +
     # model mean and 95% CrI
     geom_bar(stat = "identity") +
     geom_errorbar(aes(ymin = low, ymax = high), width = 0.2) +
     # axes
-    labs(y = "Epidemic final size (%)") +
+    scale_y_continuous(name = "Epidemic final size (%)",
+                       limits = c(0, 98),
+                       breaks = seq(0L, 100L, by = 25L)) +
     # colour palette and legend
     scale_colour_brewer(palette = "Set1") +
     scale_fill_brewer(palette = "Set1") +
@@ -307,22 +329,22 @@ fig_final_size <- function (dir_output) {
           text = element_text(size = 7, family = "sans"),
           plot.tag = element_text(size = 8, face = "bold", family = "sans")) +
     labs(tag = "c")
-  
+
   p
-  
+
   return(p)
-  
+
 }
 
 fig_timeline <- function () {
-  
+
   dt.dates <- data.table::fread(
     "date,       event
      21/02/2020, Detection of first death and first case
      07/03/2020, Second survey",
     sep = ",") %>%
     mutate(date = as.Date(date, format = "%d/%m"))
-  
+
   dt.ranges <- data.table::fread(
     "start,      end,        event
      21/02/2020, 29/02/2020, First survey
@@ -331,16 +353,11 @@ fig_timeline <- function () {
     mutate(start = as.Date(start, format = "%d/%m"),
            end   = as.Date(end,   format = "%d/%m")) %>%
     mutate(mid   = start + as.integer(end - start)/2)
-  
+
   all.dates <- c(dt.dates$date, dt.ranges$start, dt.ranges$end)
-  
+
   p <- ggplot(data = dt.dates) +
-    # time line
-    geom_segment(aes(x = min(all.dates)-1, xend = max(all.dates)+1,
-                     y = 0, yend = 0)) +
-    # dots and labels
-    geom_point(aes(x = date),
-               y = 0) +
+    # labels
     geom_label_repel(data = dt.dates[1, ],
                      aes(x = date, label = event),
                      y = 0, ylim = c(0.35, NA), size = 3) +
@@ -360,6 +377,11 @@ fig_timeline <- function () {
     geom_segment(data = dt.ranges[2, ],
                  aes(x = start, xend = end, colour = as.factor(start)),
                  y = 0.06, yend = 0.06, size = 5) +
+    # time line
+    geom_segment(aes(x = min(all.dates)-1, xend = max(all.dates)+1,
+                     y = 0, yend = 0)) +
+    geom_point(aes(x = date),
+               y = 0) +
     # axes
     ylim(-0.45, 0.5) +
     scale_x_date(date_labels = "%d/%m",
@@ -376,9 +398,9 @@ fig_timeline <- function () {
           text = element_text(size = 10, family = "sans"),
           plot.tag = element_text(size = 10, face = "bold", family = "sans")) +
     labs(tag = "c")
-  
+
   p
-  
+
   return(p)
-  
+
 }

@@ -1,75 +1,63 @@
 # Run the SEIR model specified in the paper
 wrapper_model <- function (iter_main, data,
-                           fixed_parameters, all_looped_parameters,
-                           limits, random_walk_rate,
+                           fixed_parameters, looped_parameters,
+                           lims, limits, random_walk_rate,
                            mcmc_iterations, sample_spacing, dir_output, id_chain) {
 
-  # extract parameter combination for this iteration of the loop
-  looped_parameters <- all_looped_parameters[iter_main, ]
+  # create output folder
+  dir.create(dir_output, recursive = TRUE, showWarnings = FALSE)
 
-  # timesteps to solve the SEIR model
-  times <- seq(from = fixed_parameters$tSeed,
-               to = fixed_parameters$time2,
-               by = 1L)
+  # prepare
+  nr_iter_main <- nrow(looped_parameters)
+  looped_parameters <- looped_parameters[iter_main, ]
+  times <- seq(from = fixed_parameters$tSeed, to = fixed_parameters$time2, by = 1L)
+  utils::write.table(
+    looped_parameters,
+    file.path(dir_output, paste0("looped_parameters-iter_main_", iter_main, ".csv")),
+    append = FALSE, quote = FALSE,
+    col.names = TRUE, row.names = FALSE, sep = ",")
+  utils::write.table(
+    fixed_parameters,
+    file.path(dir_output, paste0("fixed_parameters-iter_main_", iter_main, ".csv")),
+    append = FALSE, quote = FALSE,
+    col.names = TRUE, row.names = FALSE, sep = ",")
 
-  # initialise loop through chains
-  loop.acceptance_rate  <- matrix(nrow = 0, ncol = ncol(limits) + 1)
-  loop.random_walk_rate <- matrix(nrow = 0, ncol = ncol(limits) + 2)
-  loop.posterior        <- matrix(nrow = 0, ncol = ncol(limits) + 3)
+  # loop over chains
   for (idc in id_chain) {
 
-    # set seed
     set.seed(idc)
-    print(paste("## Loop number", iter_main, "chain number", idc))
+    print(paste0("## Loop number ", iter_main, "/", nr_iter_main,
+                 ", chain number ", idc, "/", length(id_chain)))
 
-    # initialise fitted parameters within MCMC limits, but make sure there's space for gamma!
-    # N.B. inv_nu + inv_delta + inv_gamma = generation_time
+    # initialise fitted parameters within MCMC limits,
+    # but make sure there's space for the dependent variable 1/gamma
     repeat {
-      fitted_parameters <- apply(limits, 2, function(lim) runif(1, lim[1], lim[2]))
+      fitted_parameters <- apply(lims, 2, function(lim) runif(1, lim[1], lim[2]))
       if (sum(fitted_parameters[c("inv_nu", "inv_delta")]) < 0.99 * fixed_parameters$generation_time)
         break
     }
 
     # run mcmc
-    results <- run_mcmc(data              = data,
-                        times             = times,
-                        fixed_parameters  = fixed_parameters,
-                        looped_parameters = looped_parameters,
-                        fitted_parameters = fitted_parameters,
-                        limits            = limits,
-                        random_walk_rate  = random_walk_rate,
-                        mcmc_iterations   = mcmc_iterations,
-                        sample_spacing    = sample_spacing)
-
-    # clean results
-    loop.acceptance_rate <- rbind(loop.acceptance_rate,
-                                  c(results$acceptance_rate,
-                                    chain = idc))
-    loop.random_walk_rate <- rbind(loop.random_walk_rate,
-                                   cbind(results$random_walk_rate,
-                                         chain = idc,
-                                         iter_mcmc = seq.int(nrow(results$fitted_parameters))))
-    loop.posterior <- rbind(loop.posterior,
-                            cbind(ll = results$log_likelihood,
-                                  results$fitted_parameters,
-                                  chain = idc,
-                                  iter_mcmc = seq.int(nrow(results$fitted_parameters))))
+    run_mcmc(dir_output        = dir_output,
+             iter_main         = iter_main,
+             idc               = idc,
+             data              = data,
+             times             = times,
+             fixed_parameters  = fixed_parameters,
+             looped_parameters = looped_parameters,
+             fitted_parameters = fitted_parameters,
+             limits            = limits,
+             random_walk_rate  = random_walk_rate,
+             mcmc_iterations   = mcmc_iterations,
+             sample_spacing    = sample_spacing)
 
   }
-
-  # write to file in R format
-  res <- list(acceptance_rate   = loop.acceptance_rate,
-              random_walk_rate  = loop.random_walk_rate,
-              posterior         = loop.posterior,
-              looped_parameters = unlist(looped_parameters),
-              fixed_parameters  = unlist(fixed_parameters))
-  saveRDS(res, file.path(dir_output, paste0(
-    "results_", sprintf("%02d", iter_main), ".rds")))
 
 }
 
 # define mcmc routine
-run_mcmc <- function (data, times,
+run_mcmc <- function (dir_output, iter_main, idc,
+                      data, times,
                       fixed_parameters, looped_parameters, fitted_parameters,
                       limits, random_walk_rate,
                       mcmc_iterations, sample_spacing) {
@@ -84,22 +72,24 @@ run_mcmc <- function (data, times,
   sol <- model_gen(user = as.list(params))$run(times)
   old_llike <- compute_loglikelihood(sol, data, params)
 
+  # print to file
+  names(random_walk_rate) <- paste0("rwr_", names(random_walk_rate))
+  utils::write.table(
+    t(c(iter = 0, ll = old_llike, fitted_params)),
+    file.path(dir_output, paste0("posterior-iter_main_", iter_main, "-chain_", idc, ".csv")),
+    append = FALSE, quote = FALSE,
+    col.names = TRUE, row.names = FALSE, sep = ",")
+  utils::write.table(
+    t(c(iter = 0, random_walk_rate)),
+    file.path(dir_output, paste0("random_walk_rate-iter_main_", iter_main, "-chain_", idc, ".csv")),
+    append = FALSE, quote = FALSE,
+    col.names = TRUE, row.names = FALSE, sep = ",")
+
   # initialise MCMC parameters
   nr_fitted <- length(fitted_params)
   nr_stored <- mcmc_iterations%/%sample_spacing
-
-  # initialise output variables
-  stored_fit <- matrix(0, ncol = nr_fitted, nrow = nr_stored,
-                       dimnames = list(NULL, names(fitted_params)))
-  stored_rw  <- matrix(0, ncol = nr_fitted, nrow = nr_stored,
-                       dimnames = list(NULL, names(fitted_params)))
-  stored_llike <- rep(0, length.out = nr_stored)
   nr_accepted  <- rep(0, length.out = nr_fitted) # number of accepted iterations
 
-  # insert into output variables
-  stored_fit[1, ] <- fitted_params
-  stored_rw[1, ]  <- random_walk_rate
-  stored_llike[1] <- old_llike
 
   # MCMC ----------------------------------------------------------------------
   for (iter in 2:mcmc_iterations) {
@@ -111,14 +101,14 @@ run_mcmc <- function (data, times,
       if (nameID %in% c("inv_nu", "inv_delta")) {
         nameotherID <- setdiff(c("inv_nu", "inv_delta"), nameID)
         repeat {
-          new_value <- old_value * exp(random_walk_rate[parID] * rnorm(1))   # change old value slightly
+          new_value <- old_value * exp(random_walk_rate[[parID]] * rnorm(1))   # change old value slightly
           if(new_value > limits[1, parID] &
              new_value + fitted_params[nameotherID] < 0.99 * fixed_parameters$generation_time)
             break
         }
       } else {
         repeat {
-          new_value <- old_value * exp(random_walk_rate[parID] * rnorm(1))   # change old value slightly
+          new_value <- old_value * exp(random_walk_rate[[parID]] * rnorm(1))   # change old value slightly
           if(new_value > limits[1, parID] & new_value < limits[2, parID])
             break
         }
@@ -144,45 +134,58 @@ run_mcmc <- function (data, times,
       # adaptive MCMC: tuning sample proposal variance
       Nu0 <- 0.234    #ideal acceptance probability
       if (iter < mcmc_iterations / (sample_spacing * 2)) {
-        temp <- random_walk_rate[parID] * exp(0.4 * (exp(min(Nu, 0)) - Nu0) / (35 * iter / mcmc_iterations + 1)) #tuning random_walk_rate
-        random_walk_rate[parID] <- ifelse(temp > 1e-10, ifelse(temp < 10, temp, 10), 1e-10) #bounded RW between 0 - 10
-      }
-
-      # store subsample of MCMC chain
-      if (iter%%sample_spacing == 0 & parID == nr_fitted) {
-        print(iter)
-        temp <- iter%/%sample_spacing
-        stored_fit[temp, ] <- fitted_params
-        stored_llike[temp] <- old_llike
-        stored_rw[temp, ]  <- random_walk_rate
+        temp <- random_walk_rate[[parID]] * exp(0.4 * (exp(min(Nu, 0)) - Nu0) / (35 * iter / mcmc_iterations + 1)) #tuning random_walk_rate
+        random_walk_rate[[parID]] <- ifelse(temp > 1e-10, ifelse(temp < 10, temp, 10), 1e-10) #bounded RW between 0 - 10
       }
 
     }
+
+    # print subsample of MCMC chain
+    if (iter%%sample_spacing == 0) {
+      print(iter)
+
+      utils::write.table(
+        t(c(iter = iter, ll = old_llike, fitted_params)),
+        file.path(dir_output, paste0("posterior-iter_main_", iter_main, "-chain_", idc, ".csv")),
+        append = TRUE,
+        col.names = FALSE, row.names = FALSE, sep = ",")
+
+      utils::write.table(
+        t(c(iter = iter, random_walk_rate)),
+        file.path(dir_output, paste0("random_walk_rate-iter_main_", iter_main, "-chain_", idc, ".csv")),
+        append = TRUE,
+        col.names = FALSE, row.names = FALSE, sep = ",")
+    }
+
   }
 
-  # store output in a list
+  # print acceptance rate
   acceptance_rate <- nr_accepted / mcmc_iterations
-  names(acceptance_rate) <- colnames(stored_fit)
-  results <- list(acceptance_rate   = acceptance_rate,
-                  random_walk_rate  = stored_rw,
-                  log_likelihood    = stored_llike,
-                  fitted_parameters = stored_fit)
+  names(acceptance_rate) <- names(fitted_params)
+  utils::write.table(
+    t(acceptance_rate),
+    file.path(dir_output, paste0("acceptance_rate-iter_main_", iter_main, "-chain_", idc, ".csv")),
+    append = FALSE, quote = FALSE,
+    col.names = TRUE, row.names = FALSE, sep = ",")
 
-  return(results)
+  return(0)
 
 }
 
 model_gen <- odin::odin({
 
-  # define (time-)dependent parameters
+  # define dependent parameters
+
   gamma <- 1 / (generation_time - inv_nu - inv_delta)
   nu    <- 1 / inv_nu
   delta <- 1 / inv_delta
+
+  # define time-dependent parameters
   beta  <- if (t < tQ) R0_1 * gamma else w * R0_1 * gamma
 
   # ODE system
-  deriv(S)    <- - beta * (q * TPp + I_A + I_S) * S/N
-  deriv(E)    <- beta * (q * TPp + I_A + I_S) * S/N - nu * E
+  deriv(S)    <- - beta * (q_TPp * TPp + q_A * I_A + I_S) * S/N
+  deriv(E)    <- beta * (q_TPp * TPp + q_A * I_A + I_S) * S/N - nu * E
   deriv(TPp)  <- nu * E - delta * TPp
   deriv(I_A)  <- p * delta * TPp - gamma * I_A
   deriv(I_S)  <- (1 - p) * delta * TPp - gamma * I_S
@@ -213,15 +216,16 @@ model_gen <- odin::odin({
   time2     <- user()
   tQ        <- user()
   N         <- user()
+  q_TPp     <- user()
+  q_A       <- user()
   generation_time <- user()
-  q         <- user()
 
 })
 
 # log-likelihood formula
 ll <- function (prop, numerator, denominator) {
   lgamma(denominator + 1) - lgamma(numerator + 1) - lgamma(denominator - numerator + 1)+
-    numerator * log(prop) + (denominator - numerator) * log(1-prop)
+    numerator * log(prop) + (denominator - numerator) * log(1 - prop)
 }
 
 # compute log-likelihood

@@ -1,0 +1,23 @@
+---
+output: word_document
+params:
+    dir_clean: ["clean"]
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+## Parameter fits
+```{r table_fitted_parameters, echo = FALSE, results = 'asis'}
+table <- readRDS(file.path(dir_clean, "table.rds"))
+knitr::kable(table, row.names = FALSE)
+```
+
+
+## Epidemic final size
+```{r table_final_size, echo = FALSE, results = 'asis'}
+table_TN <- readRDS(file.path(dir_clean, "table_TN.rds"))
+knitr::kable(table_TN, row.names = FALSE)
+```
