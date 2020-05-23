@@ -1,0 +1,1307 @@
+---
+title: "Analysis - Serial Interal, R estimates and Cluster Analysis"
+author: "Gina Cuomo-Dannenburg"
+author: "Gina Cuomo-Dannenburg and Katy Gaythorpe"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  word_document:
+    fig_width: 7
+    fig_height: 5
+    fig_caption: true
+    highlight: "tango"
+    reference_docx: word_style.docx
+---
+
+```{r load-packages}
+## packages needed
+list_of_packages <- c("knitr",
+                      "tidyr",
+                      "dplyr",
+                      "readr",
+                      "lubridate",
+                      "magrittr",
+                      "ggplot2",
+                      "plotly",
+                      "htmlwidgets",
+                      "epicontacts",
+                      "igraph",
+                      "GGally",
+                      "epitrix",
+                      "ggpubr",
+                      "flextable",
+                      "network",
+                      "sna",
+                      "scales",
+                      "intergraph",
+                      "cowplot")
+## install missing packages
+new_packages <- list_of_packages[!(list_of_packages %in% installed.packages()[,"Package"])]
+if(length(new_packages) > 0) {
+  install.packages(new.packages)
+  }
+
+## load packages 
+library(knitr)
+library(tidyr)
+library(dplyr)
+library(readr)
+library(janitor)
+library(lubridate)
+library(magrittr)
+library(ggplot2)
+library(plotly)
+library(htmlwidgets)
+library(epicontacts)
+library(igraph)
+library(GGally)
+library(epitrix)
+library(ggpubr)
+library(flextable)
+library(network)
+library(sna)
+library(scales)
+library(intergraph)
+library(cowplot)
+
+```
+
+```{r run-source-scripts}
+source("checking_functions.R")
+source("plot_clusters.R")
+source("plot_tree.R")
+
+```
+
+```{r read-rds-objects}
+full_data <- readRDS("full_data.rds")
+linelist <- readRDS("linelist.rds")
+all_contacts <- readRDS("all_contact.rds")
+direct_contacts <- readRDS("direct_contact.rds")
+
+contacts <- all_contacts[,c("id", "contact_id")]
+names(contacts) <- c("to", "from")
+
+```
+
+## Onset to Confirmation 
+For a lot of individuals in our linelist dataset, the date of onset of symptoms is not available. This however means that we will have only a few transmission pairs (infector-infectee) to estimate our serial interval. Hence, for those with an unknown onset date, we wil be using the date of confirmation to impute the onset of symptoms by sampling from the set of onset-to-confirmation delays.
+
+```{r onset-to-confirmation}
+## find individuals for whom we know the delay
+known_delay <- linelist %>%
+  dplyr::filter(!is.na(onset) == TRUE) %>%
+  dplyr::mutate(onset_to_confirmation = as.numeric(difftime(first_positive, onset, units = "days")))
+
+onset_to_confirmation <- known_delay$onset_to_confirmation
+
+## test sampling from this set of values
+sample(onset_to_confirmation, size = 50, replace = TRUE)
+
+```
+
+## Serial Interval Estimates
+We need to set up different algorithms for the central estimate and confidence intervals of the serial interval.Throughout this, we are only using individuals with a known infector who is also a villager (and hence we have details on their testing etc. which we don't have for those infected outside the village)
+
+Find all algorithms in the supplementary information for the paper. 
+
+```{r datasets-for-SI}
+
+linelist_villager <- linelist %>%
+  dplyr::filter(!is.na(first_positive) == TRUE)
+
+## I know there should be 80 entries
+if(nrow(linelist_villager) != 80) {
+  stop("This dataset does not include all inhabitants of Vo' +ve for SARS-CoV-2")
+}
+
+## remove any duplicated entries 
+df_sort <- t(apply(contacts, 1, sort))
+contacts <- contacts[!duplicated(df_sort),]
+
+village_contacts <- contacts %>%
+  dplyr::filter((to %in% linelist_villager$id) == TRUE) %>%
+  dplyr::filter((from %in% linelist_villager$id) == TRUE)
+
+```
+
+
+```{r estimate-central-SI, message=FALSE}
+
+central_serial_interval <- function(linelist = linelist_villager, contacts = village_contacts, 
+                                    onset_delay = onset_to_confirmation, 
+                                    iterations = 1000) {
+  ## make an empty df to fill with the estimates of parameters
+  empty <- rep(0, 3 * iterations)
+  empty <- matrix(empty, ncol = 3)
+  empty <- as.data.frame(empty)
+  
+  estimate_df <- empty
+  names(estimate_df) <- c("mean", "shape", "scale")
+  
+  for(i in 1:iterations) {
+    ## ensure that sampling varies each run 
+    set.seed(i)
+    
+    linelist$id %<>% as.character()
+    
+    ## impute onset dates
+    linelist_known <- linelist %>% dplyr::filter(!is.na(onset) == TRUE)
+    linelist_unknown <- linelist %>% dplyr::filter(!is.na(onset) == FALSE) 
+    
+    linelist_unknown %<>% mutate(onset = first_positive - sample(onset_delay,
+                                                                 size = n(),
+                                                                 replace = TRUE))
+    linelist_final <- rbind(linelist_known, linelist_unknown)
+    linelist_final$id %<>% as.character()
+    
+    ## need to match infectors and infectees and add in their onset dats
+    
+    df <- contacts
+    
+    ## suppress messages so that it doesn't crash your R session
+    df <- dplyr::left_join(df, linelist_final[,c("id", "onset")], by = c("from" = "id"))
+    names(df)[3] <- "onset_from"
+    
+    df <- dplyr::left_join(df, linelist_final[,c("id", "onset")], by = c("to" = "id"))
+    names(df)[4] <- "onset_to"
+    
+    ## calculate the serial intervals based on imputed onsets -- correct for negatives
+    df %<>% 
+      dplyr::mutate(serial_interval = abs(as.numeric(difftime(onset_from, onset_to, 
+                                                              units = "days"))))
+    
+    df %<>% dplyr::mutate(correction = ifelse(onset_to > onset_from, "correct", "incorrect"))
+    
+    df_correct <- df %>% dplyr::filter(correction == "correct")
+    
+    df_incorrect <- df %>% dplyr::filter(correction == "incorrect") %>%
+      dplyr::mutate(correct_to = from, 
+                    correct_from = to,
+                    correct_onset_to = onset_from,
+                    correct_onset_from = onset_to)
+    
+    ## make sure the orderings match the correct entries
+    df_incorrect <- df_incorrect[,c("correct_to", "correct_from", 
+                                     "correct_onset_from", "correct_onset_to",
+                                    "serial_interval", "correction")]
+    
+    names(df_incorrect) <- names(df_correct)
+    
+    df <- rbind(df_correct, df_incorrect)
+    
+    get_a_row <- function(df){
+      if(nrow(df) == 1){
+        sample_ind = 1
+      } else{
+        sample_ind <- sample(1:nrow(df),1)
+      }
+      df <- df[sample_ind,]
+      return(df)
+    }
+    
+    df_out <- NULL
+    
+    for(t in unique(df$to)) {
+      df_tmp <- df %>% filter(to == t)
+      df_out %<>% bind_rows(get_a_row(df_tmp))
+      df_out
+    }
+
+    # ## fit the gamma distributions
+    parm <- epitrix::fit_disc_gamma(df_out$serial_interval, mu_ini = 7)
+
+    ## fill it in the dataframe
+    estimate_df[i,1] <- parm$mu
+    estimate_df[i,2] <- parm$distribution$parameters$shape
+    estimate_df[i,3] <- parm$distribution$parameters$scale
+
+  }
+  
+  estimate_df
+  
+}
+
+### all code was run for 10,000 iterations but this is slow
+# central_SI <- central_serial_interval(iterations = 10000)
+
+central_SI <- central_serial_interval(iterations = 100)
+
+## central SI values
+central_mean <- mean(central_SI$mean)
+## corresponding shape and scale parameters
+central_shape <- central_SI$shape[round(central_SI$mean, digits = 3) == 
+                                    round(central_mean, digits = 3)]
+central_scale <- central_SI$scale[round(central_SI$mean, digits = 3) == 
+                                    round(central_mean, digits = 3)]
+
+
+```
+
+95% confidence interval on the central estimate for the serial interval:
+
+```{r serial-interval-ci}
+confidence_serial_interval <- function(linelist = linelist_villager, contacts = village_contacts, 
+                                    onset_delay = onset_to_confirmation, 
+                                    iterations = 1000) {
+  ## make an empty df to fill with the estimates of parameters
+  empty <- rep(0, 3 * iterations)
+  empty <- matrix(empty, ncol = 3)
+  empty <- as.data.frame(empty)
+  
+  estimate_df <- empty
+  names(estimate_df) <- c("mean", "shape", "scale")
+  
+  for(i in 1:iterations) {
+    ## ensure that sampling varies each run 
+    set.seed(i)
+    
+    ## prevents the messages from dplyr which crash R session with large iterations
+    linelist$id %<>% as.character()
+    
+    ## randomly sample the infectees
+    infectees <- sample(contacts$to, size = 41, replace = TRUE)
+    
+    ## want 3 data sets - contacts, infectees with their repetition and imputed onsets, 
+    ## and the infectors and onsets
+    
+    infectee_df <- as.data.frame(matrix(rep(0,41), ncol = 1))
+    infectee_df[,1] <- infectees
+    names(infectee_df) <- "infectees"
+    infectee_df <- dplyr::left_join(infectee_df, linelist, by = c("infectees" = "id"))
+    
+    ## impute onset dates as before
+    
+    infectee_known <- infectee_df %>%
+      dplyr::filter(!is.na(onset) == TRUE)
+    infectee_unknown <- infectee_df %>%
+      dplyr::filter(!is.na(onset) == FALSE)
+    
+    infectee_unknown %<>% mutate(onset = first_positive - sample(onset_delay,
+                                                                 size = n(),
+                                                                 replace = TRUE))
+    
+    infectee_df <- rbind(infectee_known, infectee_unknown)
+    
+    ## now do the same for the infectors - want repeated infectors where necessary
+    transmission_pairs <- dplyr::left_join(infectee_df, contacts, by = c("infectees" = "to")) 
+    transmission_pairs <- transmission_pairs[,c("infectees", "from")]
+    
+    infector_df <- as.data.frame(matrix(rep(0,41), ncol = 1))
+    infector_df[,1] <- transmission_pairs$from
+    names(infector_df) <- "infectors"
+    
+    infector_df <- dplyr::left_join(infector_df, linelist, by = c("infectors" = "id"))
+    
+    infector_known <- infector_df %>%
+      dplyr::filter(!is.na(onset) == TRUE)
+    infector_unknown <- infector_df %>%
+      dplyr::filter(!is.na(onset) == FALSE)
+    
+    infector_unknown %<>% mutate(onset = first_positive - sample(onset_delay,
+                                                                 size = n(),
+                                                                 replace = TRUE))
+    
+    infector_df <- rbind(infector_known, infector_unknown)
+    
+    ## join these together 
+    
+    final <- cbind(transmission_pairs, infectee_df$onset, infector_df$onset)
+    names(final)[3:4] <- c("onset_to", "onset_from")
+  
+    final %<>% dplyr::mutate(serial_interval = abs(as.numeric(difftime(onset_from, onset_to, units = "days"))))
+    
+    df <- final
+    names(df)[1] <- "to"
+    
+    df %<>% dplyr::mutate(correction = ifelse(onset_to > onset_from, "correct", "incorrect"))
+    
+    df_correct <- df %>% dplyr::filter(correction == "correct")
+    
+    df_incorrect <- df %>% dplyr::filter(correction == "incorrect") %>%
+      dplyr::mutate(correct_to = from, 
+                    correct_from = to,
+                    correct_onset_to = onset_from,
+                    correct_onset_from = onset_to)
+    
+    ## make sure the orderings match the correct entries
+    df_incorrect <- df_incorrect[,c("correct_to", "correct_from", 
+                                     "correct_onset_from", "correct_onset_to",
+                                    "serial_interval", "correction")]
+    
+    names(df_incorrect) <- names(df_correct)
+    
+    df <- rbind(df_correct, df_incorrect)
+    
+    ## ensuring that there is only one infector per infectee
+    get_a_row <- function(df){
+      if(nrow(df) == 1){
+        sample_ind = 1
+      } else{
+        sample_ind <- sample(1:nrow(df),1)
+      }
+      df <- df[sample_ind,]
+      return(df)
+    }
+    
+    df_out <- NULL
+    
+    for(t in unique(df$to)) {
+      df_tmp <- df %>% filter(to == t)
+      df_out %<>% bind_rows(get_a_row(df_tmp))
+      df_out
+    }
+
+    # ## fit the gamma distributions
+    parm <- epitrix::fit_disc_gamma(df_out$serial_interval, mu_ini = 7)
+
+    ## fill it in the dataframe
+    estimate_df[i,1] <- parm$mu
+    estimate_df[i,2] <- parm$distribution$parameters$shape
+    estimate_df[i,3] <- parm$distribution$parameters$scale
+
+  }
+  
+  estimate_df
+  
+}
+
+# confidence_interval <- confidence_serial_interval(iterations = 10000)
+
+confidence_interval <- confidence_serial_interval(iterations = 100)
+
+lower_ci <- quantile(confidence_interval$mean, c(.025, .975))[1]
+upper_ci <- quantile(confidence_interval$mean, c(.025, .975))[2]
+
+
+```
+
+## Sensitivity Analysis - Confidence Interval 
+
+Wanted to look at the serial interval before and after lockdown and if this made a difference to the serial interval. Algorithms described in the supplementary information.
+
+```{r sensitivity-analysis-1}
+## write a function that defines the serial intervals by their dates
+assign_lockdown_status <- function(onset_infector, onset_infectee) {
+  if(onset_infectee < as.Date("2020-02-24") & onset_infector < as.Date("2020-02-24")) {
+    status <- "pre-lockdown"
+  } else if(onset_infectee >= as.Date("2020-02-24") & onset_infector >= as.Date("2020-02-24")) {
+    status <- "post-lockdown"
+  } else {
+    ## just in case the direction of transmission is wrong
+    first_date <- min(onset_infectee, onset_infector)
+    last_date <- max(onset_infectee, onset_infector)
+    
+    ## if more of the serial interval is pre-lockdown
+    if(difftime(as.Date("2020-02-24"), first_date) >= difftime(last_date, as.Date("2020-02-24"))) {
+      status <- "pre-lockdown"
+    } else if (difftime(as.Date("2020-02-24"), first_date) < difftime(last_date, as.Date("2020-02-24"))) {
+      status <- "post-lockdown"
+    } else {
+      stop("This is an edge-case -- all possible date combinations should be defined")
+    }
+  }
+  status
+}
+
+### testing this function
+assign_lockdown_status(onset_infectee = as.Date("2020-02-03"), onset_infector = as.Date("2020-02-23"))
+assign_lockdown_status(onset_infectee = as.Date("2020-02-03"), onset_infector = as.Date("2020-03-23"))
+
+```
+
+
+```{r sensitivity-analysis-1}
+
+central_sensitivity <- function(linelist = linelist_villager, contacts = village_contacts, 
+                                    onset_delay = onset_to_confirmation, 
+                                    iterations = 1000) {
+  ## make an empty df to fill with the estimates of parameters
+  empty <- rep(0, 3 * iterations)
+  empty <- matrix(empty, ncol = 3)
+  empty <- as.data.frame(empty)
+  
+  pre_estimate_df <- empty
+  names(pre_estimate_df) <- c("mean", "shape", "scale")
+  
+  post_estimate_df <- empty
+  names(post_estimate_df) <- c("mean", "shape", "scale")
+  
+  for(i in 1:iterations) {
+    ## ensure that sampling varies each run 
+    set.seed(i)
+    
+    ## impute onset dates
+    linelist_known <- linelist %>% dplyr::filter(!is.na(onset) == TRUE)
+    linelist_unknown <- linelist %>% dplyr::filter(!is.na(onset) == FALSE) 
+    
+    linelist_unknown %<>% mutate(onset = first_positive - sample(onset_delay,
+                                                                 size = n(),
+                                                                 replace = TRUE))
+    linelist_final <- rbind(linelist_known, linelist_unknown)
+    linelist_final$id %<>% as.character()
+    
+    ## need to match infectors and infectees and add in their onset dats
+    
+    df <- contacts
+    
+    ## suppress messages so that it doesn't crash your R session
+    df <- suppressMessages(dplyr::left_join(df, linelist_final[,c("id", "onset")], by = c("from" = "id")))
+    names(df)[3] <- "onset_from"
+    
+    df <- suppressMessages(dplyr::left_join(df, linelist_final[,c("id", "onset")], by = c("to" = "id")))
+    names(df)[4] <- "onset_to"
+    
+    ## calculate the serial intervals based on imputed onsets -- correct for negatives
+    df %<>% dplyr::mutate(serial_interval = abs(as.numeric(difftime(onset_from, onset_to, units = "days"))))
+    
+    df %<>% dplyr::mutate(correction = ifelse(onset_to > onset_from, "correct", "incorrect"))
+    
+    df_correct <- df %>% dplyr::filter(correction == "correct")
+    
+    df_incorrect <- df %>% dplyr::filter(correction == "incorrect") %>%
+      dplyr::mutate(correct_to = from, 
+                    correct_from = to,
+                    correct_onset_to = onset_from,
+                    correct_onset_from = onset_to)
+    
+    ## make sure the orderings match the correct entries
+    df_incorrect <- df_incorrect[,c("correct_to", "correct_from", 
+                                     "correct_onset_from", "correct_onset_to",
+                                    "serial_interval", "correction")]
+    
+    names(df_incorrect) <- names(df_correct)
+    
+    df <- rbind(df_correct, df_incorrect)
+    
+    ## ensures there is only one infector per infectee
+    get_a_row <- function(df){
+      if(nrow(df) == 1){
+        sample_ind = 1
+      } else{
+        sample_ind <- sample(1:nrow(df),1)
+      }
+      df <- df[sample_ind,]
+      return(df)
+    }
+    
+    df_out <- NULL
+    
+    for(t in unique(df$to)) {
+      df_tmp <- df %>% filter(to == t)
+      df_out %<>% bind_rows(get_a_row(df_tmp))
+      df_out
+    }
+    
+    df_out %<>% 
+      rowwise() %>% 
+      dplyr::mutate(status = assign_lockdown_status(onset_infector = onset_from,
+                                                          onset_infectee = onset_to))
+    
+    pre_df <- dplyr::filter(df_out, status == "pre-lockdown")
+    post_df <- dplyr::filter(df_out, status == "post-lockdown")
+    
+    # ## fit the gamma distributions
+    parm_pre <- epitrix::fit_disc_gamma(pre_df$serial_interval, mu_ini = 7)
+    parm_post <- epitrix::fit_disc_gamma(post_df$serial_interval, mu_ini = 7)    
+    
+    ## fill it in the dataframe
+    pre_estimate_df[i,1] <- parm_pre$mu
+    pre_estimate_df[i,2] <- parm_pre$distribution$parameters$shape
+    pre_estimate_df[i,3] <- parm_pre$distribution$parameters$scale
+    
+    post_estimate_df[i,1] <- parm_post$mu
+    post_estimate_df[i,2] <- parm_post$distribution$parameters$shape
+    post_estimate_df[i,3] <- parm_post$distribution$parameters$scale
+
+
+  }
+  
+  pre_estimate_df$status <- "pre-lockdown"
+  post_estimate_df$status <- "post-lockdown"
+  
+  estimate_df <- rbind(pre_estimate_df, post_estimate_df)
+  estimate_df
+  
+}
+
+# central_sensitivity_analysis <- central_sensitivity(iterations = 10000)
+central_sensitivity_analysis <- central_sensitivity(iterations = 100)
+
+pre_lockdown_si <- central_sensitivity_analysis %>%
+  dplyr::filter(status == "pre-lockdown") 
+
+post_lockdown_si <- central_sensitivity_analysis %>%
+  dplyr::filter(status == "post-lockdown") 
+
+pre_mean <- mean(pre_lockdown_si$mean)
+post_mean <- mean(post_lockdown_si$mean)
+
+pre_parm <- data.frame(mean = mean(pre_lockdown_si$mean),
+                       shape = pre_lockdown_si$shape[round(pre_lockdown_si$mean, digits = 3) == 
+                                                       round(pre_mean, 3)][1],
+                       scale =  pre_lockdown_si$scale[round(pre_lockdown_si$mean, digits = 3) == 
+                                                        round(pre_mean, 3)][1])
+
+post_parm <- data.frame(mean = mean(post_lockdown_si$mean),
+                       shape = post_lockdown_si$shape[round(post_lockdown_si$mean, digits = 3) == 
+                                                       round(post_mean, 3)][1],
+                       scale = post_lockdown_si$scale[round(post_lockdown_si$mean, digits = 3) == 
+                                                        round(post_mean, 3)][1])
+
+```
+
+```{r sensitivity-analysis-3}
+confidence_sensitivity <- function(linelist = linelist_villager, contacts = village_contacts, 
+                                    onset_delay = onset_to_confirmation, 
+                                    iterations = 1000) {
+  ## make an empty df to fill with the estimates of parameters
+  empty <- rep(0, 3 * iterations)
+  empty <- matrix(empty, ncol = 3)
+  empty <- as.data.frame(empty)
+  
+  pre_estimate_df <- empty
+  names(pre_estimate_df) <- c("mean", "shape", "scale")
+  
+  post_estimate_df <- empty
+  names(post_estimate_df) <- c("mean", "shape", "scale")
+  
+  for(i in 1:iterations) {
+    ## ensure that sampling varies each run 
+    set.seed(i)
+    
+    ## prevents the messages from dplyr which crash R session with large iterations
+    linelist$id %<>% as.character()
+    
+    ## randomly sample the infectees
+    infectees <- sample(contacts$to, size = 41, replace = TRUE)
+    
+    ## want 3 data sets - contacts, infectees with their repetition and imputed onsets, 
+    ## and the infectors and onsets
+    
+    infectee_df <- as.data.frame(matrix(rep(0,41), ncol = 1))
+    infectee_df[,1] <- infectees
+    names(infectee_df) <- "infectees"
+    infectee_df <- dplyr::left_join(infectee_df, linelist, by = c("infectees" = "id"))
+    
+    ## impute onset dates as before
+    
+    infectee_known <- infectee_df %>%
+      dplyr::filter(!is.na(onset) == TRUE)
+    infectee_unknown <- infectee_df %>%
+      dplyr::filter(!is.na(onset) == FALSE)
+    
+    infectee_unknown %<>% mutate(onset = first_positive - sample(onset_delay,
+                                                                 size = n(),
+                                                                 replace = TRUE))
+    
+    infectee_df <- rbind(infectee_known, infectee_unknown)
+    
+    ## now do the same for the infectors - want repeated infectors where necessary
+    transmission_pairs <- dplyr::left_join(infectee_df, contacts, by = c("infectees" = "to")) 
+    transmission_pairs <- transmission_pairs[,c("infectees", "from")]
+    
+    infector_df <- as.data.frame(matrix(rep(0,41), ncol = 1))
+    infector_df[,1] <- transmission_pairs$from
+    names(infector_df) <- "infectors"
+    
+    infector_df <- dplyr::left_join(infector_df, linelist, by = c("infectors" = "id"))
+    
+    infector_known <- infector_df %>%
+      dplyr::filter(!is.na(onset) == TRUE)
+    infector_unknown <- infector_df %>%
+      dplyr::filter(!is.na(onset) == FALSE)
+    
+    infector_unknown %<>% mutate(onset = first_positive - sample(onset_delay,
+                                                                 size = n(),
+                                                                 replace = TRUE))
+    
+    infector_df <- rbind(infector_known, infector_unknown)
+    
+    ## join these together 
+    
+    final <- cbind(transmission_pairs, infectee_df$onset, infector_df$onset)
+    names(final)[3:4] <- c("onset_to", "onset_from")
+  
+    final %<>% dplyr::mutate(serial_interval = abs(as.numeric(difftime(onset_from, onset_to, units = "days"))))
+
+    df <- final
+    names(df)[1] <- "to"
+  
+    df %<>% dplyr::mutate(correction = ifelse(onset_to > onset_from, "correct", "incorrect"))
+    
+    df_correct <- df %>% dplyr::filter(correction == "correct")
+    
+    df_incorrect <- df %>% dplyr::filter(correction == "incorrect") %>%
+      dplyr::mutate(correct_to = from, 
+                    correct_from = to,
+                    correct_onset_to = onset_from,
+                    correct_onset_from = onset_to)
+    
+    ## make sure the orderings match the correct entries
+    df_incorrect <- df_incorrect[,c("correct_to", "correct_from", 
+                                     "correct_onset_from", "correct_onset_to",
+                                    "serial_interval", "correction")]
+    
+    names(df_incorrect) <- names(df_correct)
+    
+    df <- rbind(df_correct, df_incorrect)
+    
+    get_a_row <- function(df){
+      if(nrow(df) == 1){
+        sample_ind = 1
+      } else{
+        sample_ind <- sample(1:nrow(df),1)
+      }
+      df <- df[sample_ind,]
+      return(df)
+    }
+    
+    df_out <- NULL
+    
+    for(t in unique(df$to)) {
+      df_tmp <- df %>% filter(to == t)
+      df_out %<>% bind_rows(get_a_row(df_tmp))
+      df_out
+    }
+    
+    df_out %<>% 
+      rowwise() %>% 
+      dplyr::mutate(status = assign_lockdown_status(onset_infector = onset_from,
+                                                          onset_infectee = onset_to))
+    
+    pre_df <- dplyr::filter(df_out, status == "pre-lockdown")
+    post_df <- dplyr::filter(df_out, status == "post-lockdown")
+    # ## fit the gamma distributions
+    parm_pre <- epitrix::fit_disc_gamma(pre_df$serial_interval, mu_ini = 7)
+    parm_post <- epitrix::fit_disc_gamma(post_df$serial_interval, mu_ini = 7)    
+    
+    ## fill it in the dataframe
+    pre_estimate_df[i,1] <- parm_pre$mu
+    pre_estimate_df[i,2] <- parm_pre$distribution$parameters$shape
+    pre_estimate_df[i,3] <- parm_pre$distribution$parameters$scale
+    
+    post_estimate_df[i,1] <- parm_post$mu
+    post_estimate_df[i,2] <- parm_post$distribution$parameters$shape
+    post_estimate_df[i,3] <- parm_post$distribution$parameters$scale
+
+
+  }
+  
+  pre_estimate_df$status <- "pre-lockdown"
+  post_estimate_df$status <- "post-lockdown"
+  
+  estimate_df <- rbind(pre_estimate_df, post_estimate_df)
+  estimate_df
+  
+}
+
+# confidence_sensitivity_analysis <- confidence_sensitivity(iterations = 10000)
+confidence_sensitivity_analysis <- confidence_sensitivity(iterations = 100)
+
+pre_lockdown_confidence <- central_sensitivity_analysis %>%
+  dplyr::filter(status == "pre-lockdown") %>% 
+  dplyr::summarise(lower_si = quantile(mean, 0.025),
+                   upper_si = quantile(mean, 0.975))
+
+
+post_lockdown_confidence <- confidence_sensitivity_analysis %>%
+  dplyr::filter(status == "post-lockdown") %>% 
+  dplyr::summarise(lower_si = quantile(mean, 0.025),
+                   upper_si = quantile(mean, 0.975))
+
+pre_lockdown_confidence
+post_lockdown_confidence
+
+```
+
+```{r plotting-serial-interval}
+
+si_df <- data.frame(days = seq(0, 30, length.out = 10000),
+                    overall = dgamma(x = seq(0, 30, length.out = 10000), 
+                                     shape = central_shape[1], 
+                                     scale = central_scale[1]),
+                    pre_lockdown = dgamma(x = seq(0, 30, length.out = 10000), 
+                                     shape = pre_parm$shape, 
+                                     scale = pre_parm$scale),
+                    post_lockdown = dgamma(x = seq(0, 30, length.out = 10000), 
+                                     shape = post_parm$shape, 
+                                     scale = post_parm$scale))
+
+si_df <- tidyr::pivot_longer(si_df, overall:post_lockdown,
+                             names_to = "duration", values_to = "mle")
+
+si_df$duration <- factor(si_df$duration, levels = c("overall", "pre_lockdown",
+                                                    "post_lockdown"))
+
+ggplot(si_df, aes(x = days, y = mle, col = duration)) + geom_line() + theme_bw() + xlim(c(0, 15)) +
+  labs(x = "serial interval (days)", y = "probability")+
+  theme(text=element_text(size=7, family="Sans")) + theme(legend.title = element_blank()) + 
+  theme(legend.position = "bottom")
+  
+ggsave("serial_interval.png", width=8.9, height=5, units="cm", dpi = 500)
+
+p1 <- ggplot(si_df, aes(x = days, y = mle, col = duration)) + geom_line() + theme_bw() + 
+  xlim(c(0, 15)) +
+  labs(x = "serial interval (days)", y = "probability") +
+  theme(text=element_text(size=7, family="Sans")) + theme(legend.title = element_blank()) + 
+  theme(legend.position = "bottom")
+
+
+```
+
+## Estimating Rt
+
+Reproduction number
+Central estimate:
+
+```{r R-eff-number}
+
+## we don't want to restrict this analysis to just those infected by villagers -- this will 
+## impact R estimate incorrectly (hence use full contacts df)
+central_rep_num <- function(linelist = linelist_villager, contacts = village_contacts, 
+                                    onset_delay = onset_to_confirmation, 
+                                    iterations = 1000, 
+                            pre_shape = pre_parm$shape, 
+                            pre_scale = pre_parm$scale,
+                            post_shape = post_parm$shape, 
+                            post_scale = post_parm$scale) {
+  empty <- rep(0, 3 * iterations)
+  empty <- matrix(empty, ncol = 3)
+  empty <- as.data.frame(empty)
+  
+  names(empty) <- c("R", "variance", "standard_error")
+  
+  cohort_1 <- empty
+  cohort_2 <- empty
+  cohort_3 <- empty
+  cohort_4 <- empty
+  
+  for(i in 1:iterations) {
+    
+    set.seed(i)
+    
+    ## impute onset dates
+    linelist_known <- linelist %>% dplyr::filter(!is.na(onset) == TRUE)
+    linelist_unknown <- linelist %>% dplyr::filter(!is.na(onset) == FALSE) 
+    
+    linelist_unknown %<>% mutate(onset = first_positive - sample(onset_delay,
+                                                                 size = n(),
+                                                                 replace = TRUE))
+    linelist_final <- rbind(linelist_known, linelist_unknown)
+    linelist_final$id %<>% as.character()
+    
+    first_inf <- min(linelist_final$onset)
+    index_case <- linelist$id[linelist_final$onset == first_inf]
+    
+    ## need to match infectors and infectees and add in their onset dats
+    
+    df <- contacts
+    
+    ## suppress messages so that it doesn't crash your R session
+    df <- dplyr::left_join(df, linelist_final[,c("id", "onset")], by = c("from" = "id"))
+    names(df)[3] <- "onset_from"
+    
+    df <- dplyr::left_join(df, linelist_final[,c("id", "onset")], by = c("to" = "id"))
+    names(df)[4] <- "onset_to"
+    
+    ## correct the directions of transmission where necessary
+    df %<>% dplyr::mutate(correction = ifelse(onset_to > onset_from, "correct", "incorrect"))
+    
+    df_correct <- df %>% dplyr::filter(correction == "correct")
+    
+    df_incorrect <- df %>% dplyr::filter(correction == "incorrect") %>%
+      dplyr::mutate(correct_to = from, 
+                    correct_from = to,
+                    correct_onset_to = onset_from,
+                    correct_onset_from = onset_to)
+    
+    ## make sure the orderings match the correct entries
+    df_incorrect <- df_incorrect[,c("correct_to", "correct_from", 
+                                     "correct_onset_from", "correct_onset_to",
+                                    "correction")]
+    
+    names(df_incorrect) <- names(df_correct)
+    
+    df <- rbind(df_correct, df_incorrect)
+    
+    ## ensure infectors are unique
+    get_a_row <- function(df){
+      if(nrow(df) == 1){
+        sample_ind = 1
+      } else{
+        sample_ind <- sample(1:nrow(df),1)
+      }
+      df <- df[sample_ind,]
+      return(df)
+    }
+    
+    df_out <- NULL
+    
+    for(t in unique(df$to)) {
+      df_tmp <- df %>% filter(to == t)
+      df_out %<>% bind_rows(get_a_row(df_tmp))
+      df_out
+    }
+   
+    known_infector <- c(unique(df_out$to), index_case)
+    
+    missing_infector <- linelist_final %>%
+      dplyr::filter((id %in% known_infector) == FALSE) %>%
+      dplyr::mutate(infector = ".", exposure = as.Date(NA))
+    
+    ### for each member of the missing_infector, we want to impute their infector 
+    ### using the serial interval
+    for(j in 1:nrow(missing_infector)) {
+      ## sample the date of exposure using the gamma distribution
+      
+      ## ensure that you use the correct distribution
+      if(missing_infector$onset[j] >= as.Date("2020-02-24")) {
+        missing_infector$exposure[j] <- as.Date(missing_infector$onset[j]) - 
+          as.difftime(rgamma(n = 1, shape = post_shape,
+                             scale = post_scale), units = "days")
+      } else {
+        missing_infector$exposure[j] <- as.Date(missing_infector$onset[j]) - 
+          as.difftime(rgamma(n = 1, shape = pre_shape,
+                             scale = pre_scale), units = "days")
+      }
+      
+      ## interval of dates where infector must have had symptom onset
+      int <- seq.Date(missing_infector$exposure[j] - as.difftime(4, units = "days"), 
+                      missing_infector$exposure[j], by = "days")
+      
+      infectors <- linelist_final %>%
+        dplyr::filter(onset %in% int)
+     
+        
+      infectors <- infectors$id
+      
+      while(length(infectors) == 0) {
+        if(missing_infector$onset[j] >= as.Date("2020-02-24")) {
+          missing_infector$exposure[j] <- as.Date(missing_infector$onset[j]) - 
+            as.difftime(rgamma(n = 1, shape = post_shape,
+                            scale = post_scale), units = "days")
+        } else {
+          missing_infector$exposure[j] <- as.Date(missing_infector$onset[j]) - 
+            as.difftime(rgamma(n = 1, shape = pre_shape, 
+                               scale = pre_scale), units = "days")
+        }
+        
+        int <- seq.Date(missing_infector$exposure[j] - as.difftime(4, units = "days"), 
+                        missing_infector$exposure[j], by = "days")
+        
+        infectors <- linelist_final %>%
+          dplyr::filter(onset %in% int)
+        
+        infectors <- infectors$id
+        
+      }
+      
+      ## impute an infector for all individuals
+      missing_infector$infector[j] <- sample(infectors, size = 1)
+    }
+    
+    ## make a contacts df of the imputed infectors and append to the existing contacts df 
+    imputed_contacts <- missing_infector[,c("id", "infector")]
+    names(imputed_contacts) <- c("to", "from")
+    
+    df_missing <- dplyr::left_join(imputed_contacts, linelist_final[,c("id", "onset")], by = c("from" = "id"))
+    names(df_missing)[3] <- "onset_from"
+    
+    df_missing <- dplyr::left_join(df_missing, linelist_final[,c("id", "onset")], by = c("to" = "id"))
+    names(df_missing)[4] <- "onset_to"
+    
+    df_out <- df_out[,names(df_missing)]
+    
+    ## this is the full list of infectors and infectees, in the correct orders
+    df <- rbind(df_out, df_missing)
+    
+    ## people infected by each infector
+    df %<>% dplyr::group_by(from) %>%
+      dplyr::summarise(secondary_cases = n())
+    
+    ## split all individuals into 3 cohorts - before 20th, 21st - 28th, 29th+
+    onset_to_cohort <- function(date_of_onset) {
+      if(date_of_onset <= as.Date("2020-02-20")) {
+        cohort = "1"
+      } else if (date_of_onset > as.Date("2020-02-20") & date_of_onset <= as.Date("2020-02-28")) {
+        cohort = "2"
+      } else {
+        cohort = "3"
+      }
+      cohort
+    }
+    
+    linelist_final %<>% 
+      dplyr::rowwise() %>%
+      dplyr::mutate(cohort = onset_to_cohort(onset))
+    
+    data <- dplyr::left_join(linelist_final, df, by = c("id" = "from")) %>%
+      dplyr::mutate(R = ifelse(is.na(secondary_cases) == TRUE, 0, secondary_cases))
+    
+    ## data for the 3 cohorts
+    data_1 <- data %>% dplyr::filter(cohort == "1") 
+    data_2 <- data %>% dplyr::filter(cohort == "2")
+    data_3 <- data %>% dplyr::filter(cohort == "3")
+    ## after 20th Feb
+    data_4 <- data %>% dplyr::filter(cohort %in% c("2", "3"))
+    
+    ## for each cohort - we want to output the mean of R (R_eff), variance of R and the se
+    ### mean R
+    cohort_1[i,1] <- mean(data_1$R)
+    cohort_2[i,1] <- mean(data_2$R)
+    cohort_3[i,1] <- mean(data_3$R)
+    cohort_4[i,1] <- mean(data_4$R)
+    
+    ### variance R
+    cohort_1[i,2] <- var(data_1$R)
+    cohort_2[i,2] <- var(data_2$R)
+    cohort_3[i,2] <- var(data_3$R)
+    cohort_4[i,2] <- var(data_4$R)
+    
+    ## standard error = sqrt(var)/sqrt(n) where n is sample size
+    cohort_1[i,3] <- (sqrt(var(data_1$R)))/(sqrt(nrow(data_1)))
+    cohort_2[i,3] <- (sqrt(var(data_2$R)))/(sqrt(nrow(data_2)))
+    cohort_3[i,3] <- (sqrt(var(data_3$R)))/(sqrt(nrow(data_3)))
+    cohort_4[i,3] <- (sqrt(var(data_4$R)))/(sqrt(nrow(data_4)))
+  }
+  
+  cohort_1$cohort <- "1"
+  cohort_2$cohort <- "2"
+  cohort_3$cohort <- "3"
+  cohort_4$cohort <- "2&3"
+  r_estimates <- rbind(cohort_1, cohort_2, cohort_3, cohort_4)
+  
+}
+
+# effective_reproductive_number <- central_rep_num(iterations = 10000)
+effective_reproductive_number <- central_rep_num(iterations = 100)
+
+cohort_1 <- effective_reproductive_number %>% dplyr::filter(cohort == "1")
+cohort_2 <- effective_reproductive_number %>% dplyr::filter(cohort == "2")
+cohort_3 <- effective_reproductive_number %>% dplyr::filter(cohort == "3")
+cohort_4 <- effective_reproductive_number %>% dplyr::filter(cohort == "2&3")
+
+mean(cohort_1$R)
+mean(cohort_2$R)
+mean(cohort_3$R)
+mean(cohort_4$R)
+
+mean(cohort_1$standard_error)
+mean(cohort_2$standard_error)
+mean(cohort_3$standard_error)
+mean(cohort_4$standard_error)
+
+```
+
+
+95% confidence interval:
+
+Using bootstrapping of the infectors
+
+```{r bootstrapping-R}
+
+## we don't want to restrict this analysis to just those infected by villagers -- this will 
+## impact R estimate incorrectly (hence use full contacts df)
+confidence_rep_num <- function(linelist = linelist_villager, contacts = village_contacts, 
+                               onset_delay = onset_to_confirmation, 
+                               iterations = 1000, 
+                               pre_shape = pre_parm$shape, 
+                               pre_scale = pre_parm$scale,
+                               post_shape = post_parm$shape, 
+                               post_scale = post_parm$scale) {
+  empty <- rep(0, 3 * iterations)
+  empty <- matrix(empty, ncol = 3)
+  empty <- as.data.frame(empty)
+  
+  names(empty) <- c("R", "variance", "standard_error")
+  
+  cohort_1 <- empty
+  cohort_2 <- empty
+  cohort_3 <- empty
+  cohort_4 <- empty
+  
+  for(i in 1:iterations) {
+    
+    set.seed(i)
+    
+    ## impute onset dates
+    linelist_known <- linelist %>% dplyr::filter(!is.na(onset) == TRUE)
+    linelist_unknown <- linelist %>% dplyr::filter(!is.na(onset) == FALSE) 
+    
+    linelist_unknown %<>% mutate(onset = first_positive - sample(onset_delay,
+                                                                 size = n(),
+                                                                 replace = TRUE))
+    linelist_final <- rbind(linelist_known, linelist_unknown)
+    linelist_final$id %<>% as.character()
+    
+    first_inf <- min(linelist_final$onset)
+    index_case <- linelist$id[linelist_final$onset == first_inf]
+    
+    ## need to match infectors and infectees and add in their onset dats
+    
+    df <- contacts
+    
+    ## suppress messages so that it doesn't crash your R session
+    df <- dplyr::left_join(df, linelist_final[,c("id", "onset")], by = c("from" = "id"))
+    names(df)[3] <- "onset_from"
+    
+    df <- dplyr::left_join(df, linelist_final[,c("id", "onset")], by = c("to" = "id"))
+    names(df)[4] <- "onset_to"
+    
+    ## correct the directions of transmission where necessary
+    df %<>% dplyr::mutate(correction = ifelse(onset_to > onset_from, "correct", "incorrect"))
+    
+    df_correct <- df %>% dplyr::filter(correction == "correct")
+    
+    df_incorrect <- df %>% dplyr::filter(correction == "incorrect") %>%
+      dplyr::mutate(correct_to = from, 
+                    correct_from = to,
+                    correct_onset_to = onset_from,
+                    correct_onset_from = onset_to)
+    
+    ## make sure the orderings match the correct entries
+    df_incorrect <- df_incorrect[,c("correct_to", "correct_from", 
+                                     "correct_onset_from", "correct_onset_to",
+                                    "correction")]
+    
+    names(df_incorrect) <- names(df_correct)
+    
+    df <- rbind(df_correct, df_incorrect)
+    
+    ## ensure infectors are unique
+    get_a_row <- function(df){
+      if(nrow(df) == 1){
+        sample_ind = 1
+      } else{
+        sample_ind <- sample(1:nrow(df),1)
+      }
+      df <- df[sample_ind,]
+      return(df)
+    }
+    
+    df_out <- NULL
+    
+    for(t in unique(df$to)) {
+      df_tmp <- df %>% filter(to == t)
+      df_out %<>% bind_rows(get_a_row(df_tmp))
+      df_out
+    }
+   
+    known_infector <- c(unique(df_out$to), index_case)
+    
+    missing_infector <- linelist_final %>%
+      dplyr::filter((id %in% known_infector) == FALSE) %>%
+      dplyr::mutate(infector = ".", exposure = as.Date(NA))
+    
+    ### for each member of the missing_infector, we want to impute their infector using the serial interval
+    for(j in 1:nrow(missing_infector)) {
+      ## sample the date of exposure using the gamma distribution
+      
+      ## ensure that you use the correct distribution
+      if(missing_infector$onset[j] >= as.Date("2020-02-24")) {
+        missing_infector$exposure[j] <- as.Date(missing_infector$onset[j]) - 
+          as.difftime(rgamma(n = 1, shape = post_shape,
+                             scale = post_scale), units = "days")
+      } else {
+        missing_infector$exposure[j] <- as.Date(missing_infector$onset[j]) - 
+          as.difftime(rgamma(n = 1, shape = pre_shape,
+                             scale = pre_scale), units = "days")
+      }
+      
+      int <- seq.Date(missing_infector$exposure[j] - as.difftime(4, units = "days"), 
+                      missing_infector$exposure[j], by = "days")
+      
+      infectors <- linelist_final %>%
+        dplyr::filter(onset %in% int)
+     
+        
+      infectors <- infectors$id
+      
+      while(length(infectors) == 0) {
+        if(missing_infector$onset[j] >= as.Date("2020-02-24")) {
+          missing_infector$exposure[j] <- as.Date(missing_infector$onset[j]) - 
+            as.difftime(rgamma(n = 1, shape = post_shape,
+                            scale = post_scale), units = "days")
+        } else {
+          missing_infector$exposure[j] <- as.Date(missing_infector$onset[j]) - 
+            as.difftime(rgamma(n = 1, shape = pre_shape, 
+                               scale = pre_scale), units = "days")
+        }
+        
+        int <- seq.Date(missing_infector$exposure[j] - as.difftime(4, units = "days"), 
+                        missing_infector$exposure[j], by = "days")
+        
+        infectors <- linelist_final %>%
+          dplyr::filter(onset %in% int)
+        
+        infectors <- infectors$id
+        
+      }
+      
+      ## impute an infector for all individuals
+      missing_infector$infector[j] <- sample(infectors, size = 1)
+    }
+    
+    ## make a contacts df of the imputed infectors and append to the existing contacts df 
+    imputed_contacts <- missing_infector[,c("id", "infector")]
+    names(imputed_contacts) <- c("to", "from")
+    
+    df_missing <- dplyr::left_join(imputed_contacts, linelist_final[,c("id", "onset")], by = c("from" = "id"))
+    names(df_missing)[3] <- "onset_from"
+    
+    df_missing <- dplyr::left_join(df_missing, linelist_final[,c("id", "onset")], by = c("to" = "id"))
+    names(df_missing)[4] <- "onset_to"
+    
+    df_out <- df_out[,names(df_missing)]
+    
+    ## this is the full list of infectors and infectees, in the correct orders
+    df <- rbind(df_out, df_missing)
+    
+    ## people infected by each infector
+    df %<>% dplyr::group_by(from) %>%
+      dplyr::summarise(secondary_cases = n())
+    
+    ## split all individuals into 3 cohorts - before 20th, 21st - 28th, 29th+
+    onset_to_cohort <- function(date_of_onset) {
+      if(date_of_onset <= as.Date("2020-02-20")) {
+        cohort = "1"
+      } else if (date_of_onset > as.Date("2020-02-20") & date_of_onset <= as.Date("2020-02-28")) {
+        cohort = "2"
+      } else {
+        cohort = "3"
+      }
+      cohort
+    }
+    
+    linelist_final %<>% 
+      dplyr::rowwise() %>%
+      dplyr::mutate(cohort = onset_to_cohort(onset))
+    
+    data <- dplyr::left_join(linelist_final, df, by = c("id" = "from")) %>%
+      dplyr::mutate(R = ifelse(is.na(secondary_cases) == TRUE, 0, secondary_cases))
+    
+    ## data for the 3 cohorts
+    data_1 <- data %>% dplyr::filter(cohort == "1") 
+    data_2 <- data %>% dplyr::filter(cohort == "2")
+    data_3 <- data %>% dplyr::filter(cohort == "3")
+    ## after 20th Feb
+    data_4 <- data %>% dplyr::filter(cohort %in% c("2", "3"))
+    
+    ## bootstrapping by sampling infectors with replacement
+    data_1 <- data_1[sample(nrow(data_1), nrow(data_1), replace = TRUE), ]
+    data_2 <- data_2[sample(nrow(data_2), nrow(data_2), replace = TRUE), ]
+    data_3 <- data_3[sample(nrow(data_3), nrow(data_3), replace = TRUE), ]
+    data_4 <- data_4[sample(nrow(data_4), nrow(data_4), replace = TRUE), ]
+    
+    ## for each cohort - we want to output the mean of R (R_eff), variance of R and the se
+    ### mean R
+    cohort_1[i,1] <- mean(data_1$R)
+    cohort_2[i,1] <- mean(data_2$R)
+    cohort_3[i,1] <- mean(data_3$R)
+    cohort_4[i,1] <- mean(data_4$R)
+    
+    ### variance R
+    cohort_1[i,2] <- var(data_1$R)
+    cohort_2[i,2] <- var(data_2$R)
+    cohort_3[i,2] <- var(data_3$R)
+    cohort_4[i,2] <- var(data_4$R)
+    
+    ## standard error = sqrt(var)/sqrt(n) where n is sample size
+    cohort_1[i,3] <- (sqrt(var(data_1$R)))/(sqrt(nrow(data_1)))
+    cohort_2[i,3] <- (sqrt(var(data_2$R)))/(sqrt(nrow(data_2)))
+    cohort_3[i,3] <- (sqrt(var(data_3$R)))/(sqrt(nrow(data_3)))
+    cohort_4[i,3] <- (sqrt(var(data_4$R)))/(sqrt(nrow(data_4)))
+  }
+  
+  cohort_1$cohort <- "1"
+  cohort_2$cohort <- "2"
+  cohort_3$cohort <- "3"
+  cohort_4$cohort <- "2&3"
+  r_estimates <- rbind(cohort_1, cohort_2, cohort_3, cohort_4)
+  
+}
+
+## final long run
+bootstrapped_R <- confidence_rep_num(iterations = 10000)
+
+cohort_1_boot <- bootstrapped_R %>%
+  dplyr::filter(cohort == "1")
+cohort_2_boot <- bootstrapped_R %>%
+  dplyr::filter(cohort == "2")
+cohort_3_boot <- bootstrapped_R %>%
+  dplyr::filter(cohort == "3")
+cohort_4_boot <- bootstrapped_R %>%
+  dplyr::filter(cohort == "2&3")
+
+mean(cohort_1$R)
+lower_ci_R_1 <- quantile(cohort_1_boot$R, c(0.025)) 
+upper_ci_R_1 <- quantile(cohort_1_boot$R, c(0.975)) 
+
+mean(cohort_2$R)
+lower_ci_R_2 <- quantile(cohort_2_boot$R, c(0.025)) 
+upper_ci_R_2 <- quantile(cohort_2_boot$R, c(0.975)) 
+
+mean(cohort_3$R)
+lower_ci_R_3 <- quantile(cohort_3_boot$R, c(0.025)) 
+upper_ci_R_3 <- quantile(cohort_3_boot$R, c(0.975)) 
+
+mean(cohort_4$R)
+lower_ci_R_4 <- quantile(cohort_4_boot$R, c(0.025)) 
+upper_ci_R_4 <- quantile(cohort_4_boot$R, c(0.975)) 
+
+
+```
+
+
+## Cluster Analysis
+```{r cluster-plotting}
+linelist_village <- cluster_add_func(linelist_villager, village_contacts)
+plot_clusters(linelist_village, village_contacts)
+
+p2 <- plot_clusters(linelist_village, village_contacts)
+
+ggsave("clusters.png", dpi = 500, width = 8.9, height = 5)
+
+## for the journal multifigure plot
+plot_theme <- theme(legend.position = "none",
+                      panel.grid.major = element_blank(),
+                      panel.grid.minor = element_blank(),
+                      panel.background = element_blank(),
+                      panel.spacing.x = unit(0.2, "lines"),
+                      panel.spacing.y = unit(0.2, "lines"),
+                      plot.margin = unit(c(0, 0, 0, 0), "cm"),
+                      legend.title = element_blank(),
+                    text=element_text(size=7, family="Sans"))
+## serial interval figure
+p1 <- ggplot(si_df, aes(x = days, y = mle, col = duration)) + geom_line() + theme_bw() + 
+  xlim(c(0, 15)) +
+  labs(x = "serial interval (days)", y = "probability") + plot_theme
+
+legend <- get_legend(
+  p1 +
+    guides(color = guide_legend(nrow = 1)) +
+    theme(legend.position = "bottom",
+          legend.direction = "horizontal",
+          legend.key=element_blank(),
+          legend.margin=margin(0,0,0,0),
+          legend.text = element_text(size = 5, family = "Sans"),
+          legend.box.spacing = unit(0, "cm"),
+          legend.key.size = grid::unit(0.5, "lines"))
+)
+
+p1_leg <- plot_grid(p1, legend, labels = "", nrow = 2, 
+                    rel_heights = c(1, 0.2))
+
+tiff("si_clusters.tiff", width=8.9, height=5, units="cm", res=500)
+plot_grid(p1_leg,p2, labels = c('a', 'b'), ncol=2, label_size = 8, label_fontface = "bold")
+dev.off()
+
+```
+
+
+
+
+
+
+
+
