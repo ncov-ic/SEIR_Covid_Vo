@@ -1,10 +1,16 @@
-central_rep_num <- function(linelist = linelist_villager, contacts = village_contacts, 
+central_rep_num <- function(linelist = linelist_villager, 
+                            contacts = village_contacts, 
                             onset_delay = onset_to_confirmation, 
                             iterations = 1000, 
                             pre_shape = pre_parm$shape, 
                             pre_scale = pre_parm$scale,
                             post_shape = post_parm$shape, 
                             post_scale = post_parm$scale) {
+  
+  
+  message("---------- Calculating effective reproduction number ----------")
+  
+  
   empty <- rep(0, 1 * iterations)
   empty <- matrix(empty, ncol = 1)
   empty <- as.data.frame(empty)
@@ -199,6 +205,11 @@ confidence_rep_num <- function(linelist = linelist_villager, contacts = village_
                                pre_scale = pre_parm$scale,
                                post_shape = post_parm$shape, 
                                post_scale = post_parm$scale) {
+  
+  
+  message("---------- Calculating CI of effective reproduction number ----------")
+  
+  
   empty <- rep(0, 1 * iterations)
   empty <- matrix(empty, ncol = 1)
   empty <- as.data.frame(empty)
