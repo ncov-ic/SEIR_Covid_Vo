@@ -61,6 +61,11 @@ linelist <- readRDS("linelist.rds")
 all_contacts <- readRDS("all_contact.rds")
 direct_contacts <- readRDS("direct_contact.rds")
 
+
+## set number of iterations
+iteration_value <- 10000
+
+
 contacts <- all_contacts[,c("id", "contact_id")]
 names(contacts) <- c("to", "from")
 
@@ -72,7 +77,7 @@ known_delay <- linelist %>%
 onset_to_confirmation <- known_delay$onset_to_confirmation
 
 ## test sampling from this set of values
-sample(onset_to_confirmation, size = 50, replace = TRUE)
+# sample(onset_to_confirmation, size = 50, replace = TRUE)
 
 ## just the cases of villagers
 linelist_villager <- linelist %>%
@@ -92,11 +97,9 @@ village_contacts <- contacts %>%
   dplyr::filter((to %in% linelist_villager$id) == TRUE) %>%
   dplyr::filter((from %in% linelist_villager$id) == TRUE)
 
-## set number of iterations for throughout the analysis - we used 10,000 for publication
-iteration_value <- 10000
-
 ### serial interval - whole study period 
-central_SI <- central_serial_interval(linelist = linelist_villager, contacts = village_contacts, 
+central_SI <- central_serial_interval(linelist = linelist_villager, 
+                                      contacts = village_contacts, 
                                       onset_delay = onset_to_confirmation,
                                       iterations = iteration_value)
 
@@ -109,7 +112,8 @@ central_shape <- (central_mean)^2/central_variance
 central_scale <- central_variance/central_mean
 
 # 95% confidence interval on the central estimate for the serial interval:
-confidence_interval <- confidence_serial_interval(linelist = linelist_villager, contacts = village_contacts, 
+confidence_interval <- confidence_serial_interval(linelist = linelist_villager, 
+                                                  contacts = village_contacts, 
                                                   onset_delay = onset_to_confirmation,
                                                   iterations = iteration_value)
 
@@ -118,7 +122,8 @@ upper_ci <- quantile(confidence_interval$mean, c(.025, .975))[2]
 
 ## Sensitivity Analysis - Confidence Interval 
 # central_sensitivity_analysis <- central_sensitivity(iterations = 10000)
-central_sensitivity_analysis <- central_sensitivity(linelist = linelist_villager, contacts = village_contacts, 
+central_sensitivity_analysis <- central_sensitivity(linelist = linelist_villager, 
+                                                    contacts = village_contacts, 
                                                     onset_delay = onset_to_confirmation, 
                                                     iterations = iteration_value)
 
@@ -144,7 +149,8 @@ post_parm <- data.frame(mean = post_mean,
                        scale = post_variance/post_mean)
 
 ## 95% CI on the central estimates pre and post lockdown
-confidence_sensitivity_analysis <- confidence_sensitivity(linelist = linelist_villager, contacts = village_contacts, 
+confidence_sensitivity_analysis <- confidence_sensitivity(linelist = linelist_villager, 
+                                                          contacts = village_contacts, 
                                                           onset_delay = onset_to_confirmation, 
                                                           iterations = iteration_value)
 
@@ -173,29 +179,33 @@ si_df <- data.frame(days = seq(0, 30, length.out = 10000),
 si_df <- tidyr::pivot_longer(si_df, overall:post_lockdown,
                              names_to = "duration", values_to = "mle")
 
-si_df$duration <- factor(si_df$duration, levels = c("overall", "pre_lockdown",
+si_df$duration <- factor(si_df$duration, levels = c("overall", 
+                                                    "pre_lockdown",
                                                     "post_lockdown"))
 
-ggplot(si_df, aes(x = days, y = mle, col = duration)) + geom_line() + theme_bw() + xlim(c(0, 15)) +
+p1 <- ggplot(si_df, aes(x = days, y = mle, col = duration)) + 
+  geom_line() + 
+  theme_bw() + 
+  xlim(c(0, 15)) +
   labs(x = "serial interval (days)", y = "probability")+
   theme(text=element_text(size=7, family="Sans")) + 
   theme(legend.title = element_blank()) + 
   theme(legend.position = "bottom")
 
-ggsave("serial_interval.png", width=8.9, height=5, units="cm", dpi = 500)
+ggsave("serial_interval.png", 
+       plot = p1, 
+       width = 8.9, 
+       height = 5, 
+       units = "cm", 
+       dpi = 500)
 
-p1 <- ggplot(si_df, aes(x = days, y = mle, col = duration)) + geom_line() + theme_bw() + 
-  xlim(c(0, 15)) +
-  labs(x = "serial interval (days)", y = "probability") +
-  theme(text=element_text(size=7, family="Sans")) + theme(legend.title = element_blank()) + 
-  theme(legend.position = "bottom")
 
 ## Estimating Rt
 
 #Central estimate:
 
-# effective_reproductive_number <- central_rep_num(iterations = 10000)
-effective_reproductive_number <- central_rep_num(linelist = linelist_villager, contacts = village_contacts, 
+effective_reproductive_number <- central_rep_num(linelist = linelist_villager, 
+                                                 contacts = village_contacts, 
                                                  onset_delay = onset_to_confirmation, 
                                                  iterations = iteration_value, 
                                                  pre_shape = pre_parm$shape, 
@@ -212,7 +222,8 @@ mean(cohort_2$R)
 #95% confidence interval:
 
 ## final long run
-bootstrapped_R <- confidence_rep_num(linelist = linelist_villager, contacts = village_contacts, 
+bootstrapped_R <- confidence_rep_num(linelist = linelist_villager, 
+                                     contacts = village_contacts, 
                                      onset_delay = onset_to_confirmation, 
                                      iterations = iteration_value, 
                                      pre_shape = pre_parm$shape, 
@@ -254,9 +265,12 @@ plot_theme <- theme(legend.position = "none",
                     legend.title = element_blank(),
                     text=element_text(size=7, family="Sans"))
 ## serial interval figure
-p1 <- ggplot(si_df, aes(x = days, y = mle, col = duration)) + geom_line() + theme_bw() + 
+p1 <- ggplot(si_df, aes(x = days, y = mle, col = duration)) + 
+  geom_line() + 
+  theme_bw() + 
   xlim(c(0, 15)) +
-  labs(x = "serial interval (days)", y = "probability") + plot_theme
+  labs(x = "serial interval (days)", y = "probability") + 
+  plot_theme
 
 legend <- get_legend(
   p1 +
