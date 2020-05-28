@@ -95,9 +95,6 @@ if(nrow(contact_data) == nrow(contact_final)) {
 ## contact type 3 = indirect contacts
 direct_contact <- contact_final %>% dplyr::filter(contact_type != 3)
 
-write.table(contact_final,"all_contacts.tsv", quote=FALSE, sep='\t', row.names = FALSE)
-write.table(direct_contact,"direct_contacts.tsv", quote=FALSE, sep='\t', row.names = FALSE)
-
 full_data$id <- as.factor(full_data$id)
 
 ## filter for only cases who tested positive
@@ -186,9 +183,14 @@ linelist <- linelist[,c("id", "household_id", "first_positive", "last_positive",
                         "first_negative", "last_negative", "onset")]
 
 
-write.table(linelist, "linelist.tsv", quote=FALSE, sep='\t', row.names = FALSE)
-
+# save ------------------------------------------------------------------------
+  
+  
 saveRDS(full_data, "full_data.rds")
 saveRDS(linelist, "linelist.rds")
 saveRDS(contact_final, "all_contact.rds")
 saveRDS(direct_contact, "direct_contact.rds")
+
+# write.table(linelist, "linelist.tsv", quote=FALSE, sep='\t', row.names = FALSE)
+# write.table(contact_final,"all_contacts.tsv", quote=FALSE, sep='\t', row.names = FALSE)
+# write.table(direct_contact,"direct_contacts.tsv", quote=FALSE, sep='\t', row.names = FALSE)
