@@ -203,7 +203,7 @@ confidence_rep_num <- function(linelist = linelist_villager, contacts = village_
   empty <- matrix(empty, ncol = 1)
   empty <- as.data.frame(empty)
   
-  names(empty) <- c("R", "variance", "standard_error")
+  names(empty) <- c("R")
   
   cohort_1 <- empty
   cohort_2 <- empty
