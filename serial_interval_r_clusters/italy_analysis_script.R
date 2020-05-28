@@ -2,6 +2,7 @@
 list_of_packages <- c("tidyr",
                       "dplyr",
                       "readr",
+                      "janitor",
                       "lubridate",
                       "magrittr",
                       "ggplot2",
@@ -48,11 +49,11 @@ library(intergraph)
 library(cowplot)
 
 ## load source codes
-source("serial_interval_functions.R")
-source("reproduction_numbers_functions.R")
-source("checking_functions.R")
-source("plot_clusters.R")
-source("plot_tree.R")
+source("R/serial_interval_functions.R")
+source("R/reproduction_number_functions.R")
+source("R/checking_functions.R")
+source("R/plot_clusters.R")
+source("R/plot_tree.R")
 
 ## load data - these are the outputs of italy_cleaning_data_script.R
 full_data <- readRDS("full_data.rds")
