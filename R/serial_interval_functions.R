@@ -2,6 +2,10 @@ central_serial_interval <- function(linelist = linelist_villager, contacts = vil
                                     onset_delay = onset_to_confirmation, 
                                     iterations = 1000) {
   
+  
+  message("---------- Calculating serial interval ----------")
+  
+  
   ## make an empty df to fill with the estimates of parameters
   empty <- rep(0, 4 * iterations)
   empty <- matrix(empty, ncol = 4)
@@ -96,6 +100,11 @@ central_serial_interval <- function(linelist = linelist_villager, contacts = vil
 confidence_serial_interval <- function(linelist = linelist_villager, contacts = village_contacts, 
                                        onset_delay = onset_to_confirmation, 
                                        iterations = 1000) {
+  
+  
+  message("---------- Calculating CI of serial interval ----------")
+  
+  
   ## make an empty df to fill with the estimates of parameters
   empty <- rep(0, 4 * iterations)
   empty <- matrix(empty, ncol = 4)
@@ -242,9 +251,15 @@ assign_lockdown_status <- function(onset_infector, onset_infectee) {
 }
 
 ## central estimates pre and post lockdown
-central_sensitivity <- function(linelist = linelist_villager, contacts = village_contacts, 
+central_sensitivity <- function(linelist = linelist_villager, 
+                                contacts = village_contacts, 
                                 onset_delay = onset_to_confirmation, 
                                 iterations = 1000) {
+  
+  
+  message("---------- Calculating central estimates pre and post lockdown ----------")
+  
+  
   ## make an empty df to fill with the estimates of parameters
   empty <- rep(0, 4 * iterations)
   empty <- matrix(empty, ncol = 4)
@@ -359,6 +374,11 @@ central_sensitivity <- function(linelist = linelist_villager, contacts = village
 confidence_sensitivity <- function(linelist = linelist_villager, contacts = village_contacts, 
                                    onset_delay = onset_to_confirmation, 
                                    iterations = 1000) {
+  
+  
+  message("---------- Calculating CI of central estimates pre and post lockdown ----------")
+  
+  
   ## make an empty df to fill with the estimates of parameters
   empty <- rep(0, 4 * iterations)
   empty <- matrix(empty, ncol = 4)
