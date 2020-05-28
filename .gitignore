@@ -4,3 +4,6 @@
 .Ruserdata
 *.png
 *.rds
+output/
+clean/
+figures/
