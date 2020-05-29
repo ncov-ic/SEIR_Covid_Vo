@@ -243,6 +243,19 @@ lower_ci_R_2 <- quantile(cohort_2_boot$R, c(0.025))
 upper_ci_R_2 <- quantile(cohort_2_boot$R, c(0.975)) 
 
 
+## outputting all values in a csv
+outputs <- data.frame(estimate = c("serial_interval", "serial_interval", "serial_interval",
+                                   "reproduction_number", "reproduction_number"),
+                      duration = c("overall", "pre-lockdown", "post-lockdown", 
+                                   "pre-lockdown", "post-lockdown"),
+                      central_estimate = c(central_mean, pre_mean, post_mean, 
+                                           mean(cohort_1$R), mean(cohort_2$R)),
+                      lower_ci = c(lower_ci, pre_lockdown_confidence$lower_si, 
+                                   post_lockdown_confidence$lower_si, lower_ci_R_1, lower_ci_R_2),
+                      upper_ci = c(upper_ci, pre_lockdown_confidence$upper_si,
+                                   post_lockdown_confidence$upper_si, upper_ci_R_1, upper_ci_R_2))
+write.csv(outputs, "serial_interval_and_R.csv", row.names = FALSE)
+
 ## Cluster Analysis
 
 linelist_village <- cluster_add_func(linelist_villager, village_contacts)
