@@ -1,3 +1,6 @@
+## set number of iterations - used 10,000 for publication
+iteration_value <- 100
+
 ## packages needed
 list_of_packages <- c("tidyr",
                       "dplyr",
@@ -60,11 +63,6 @@ full_data <- readRDS("full_data.rds")
 linelist <- readRDS("linelist.rds")
 all_contacts <- readRDS("all_contact.rds")
 direct_contacts <- readRDS("direct_contact.rds")
-
-
-## set number of iterations
-iteration_value <- 10000
-
 
 contacts <- all_contacts[,c("id", "contact_id")]
 names(contacts) <- c("to", "from")
