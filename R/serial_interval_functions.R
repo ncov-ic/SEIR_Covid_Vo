@@ -1,6 +1,7 @@
-central_serial_interval <- function(linelist = linelist_villager, contacts = village_contacts, 
-                                    onset_delay = onset_to_confirmation, 
-                                    iterations = 1000) {
+central_serial_interval <- function(linelist, 
+                                    contacts, 
+                                    onset_delay, 
+                                    iterations) {
   
   
   message("---------- Calculating serial interval ----------")
@@ -97,9 +98,10 @@ central_serial_interval <- function(linelist = linelist_villager, contacts = vil
   
 }
 
-confidence_serial_interval <- function(linelist = linelist_villager, contacts = village_contacts, 
-                                       onset_delay = onset_to_confirmation, 
-                                       iterations = 1000) {
+confidence_serial_interval <- function(linelist, 
+                                       contacts, 
+                                       onset_delay, 
+                                       iterations) {
   
   
   message("---------- Calculating CI of serial interval ----------")
@@ -251,10 +253,10 @@ assign_lockdown_status <- function(onset_infector, onset_infectee) {
 }
 
 ## central estimates pre and post lockdown
-central_sensitivity <- function(linelist = linelist_villager, 
-                                contacts = village_contacts, 
-                                onset_delay = onset_to_confirmation, 
-                                iterations = 1000) {
+central_sensitivity <- function(linelist, 
+                                contacts, 
+                                onset_delay, 
+                                iterations) {
   
   
   message("---------- Calculating central estimates pre and post lockdown ----------")
@@ -371,9 +373,10 @@ central_sensitivity <- function(linelist = linelist_villager,
 }
 
 ## 95% confidence intervals on the central estimates for pre and post lockdown 
-confidence_sensitivity <- function(linelist = linelist_villager, contacts = village_contacts, 
-                                   onset_delay = onset_to_confirmation, 
-                                   iterations = 1000) {
+confidence_sensitivity <- function(linelist, 
+                                   contacts, 
+                                   onset_delay, 
+                                   iterations) {
   
   
   message("---------- Calculating CI of central estimates pre and post lockdown ----------")
