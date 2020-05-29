@@ -1,11 +1,11 @@
-central_rep_num <- function(linelist = linelist_villager, 
-                            contacts = village_contacts, 
-                            onset_delay = onset_to_confirmation, 
-                            iterations = 1000, 
-                            pre_shape = pre_parm$shape, 
-                            pre_scale = pre_parm$scale,
-                            post_shape = post_parm$shape, 
-                            post_scale = post_parm$scale) {
+central_rep_num <- function(linelist, 
+                            contacts, 
+                            onset_delay, 
+                            iterations, 
+                            pre_shape, 
+                            pre_scale,
+                            post_shape, 
+                            post_scale) {
   
   
   message("---------- Calculating effective reproduction number ----------")
@@ -198,13 +198,14 @@ central_rep_num <- function(linelist = linelist_villager,
 }
 
 
-confidence_rep_num <- function(linelist = linelist_villager, contacts = village_contacts, 
-                               onset_delay = onset_to_confirmation, 
-                               iterations = 1000, 
-                               pre_shape = pre_parm$shape, 
-                               pre_scale = pre_parm$scale,
-                               post_shape = post_parm$shape, 
-                               post_scale = post_parm$scale) {
+confidence_rep_num <- function(linelist, 
+                               contacts, 
+                               onset_delay, 
+                               iterations, 
+                               pre_shape, 
+                               pre_scale,
+                               post_shape, 
+                               post_scale) {
   
   
   message("---------- Calculating CI of effective reproduction number ----------")
