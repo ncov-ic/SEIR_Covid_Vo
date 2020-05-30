@@ -1,84 +1,97 @@
 Please cite as:
 Lavezzo et. al., 2020, Suppression of COVID-19 outbreak in the municipality of Vo, Italy, medRxiv, doi: 10.1101/2020.04.17.20053157
 
-# Analysis structure
-Each subfolder is a separate piece of analysis. Please set your working directory to the subfolder of the chosen analysis.
+# Repository structure
+This repository contains 
+- the data collected in Vo to assess COVID-19 prevalence at two sequenatial surveys conducted in February and March 2020;
+- the code used to fit a compartmental SEIR-like model to the observed prevalence data; 
+- the code used to estimate the serial interval and reproduction number from a reconstruction of the transmission chains; 
+- the code used to assess the association between COVID-19 infection and age or sex via  logistic regression. 
 
-## Logistic regression
-Logistic regression on linelist data.
-Testing association between positivity and age/sex.
+## Data
+The data folder contains the file `anonymised_data_public_final.xlsx`, which has four sheets:
+- anonymised data (sheet 1) contains a line list with contact data, dates and results of swab testing, symptoms and hospitalisation data;
+- legend (sheet 2) contains a description of the information contained in sheet 1;
+- RT_PCR_comparison (sheet 3) contains the viral load data (both Ct values and genome equivalents) and a statistical analysis of these data; 
+- RT_PCR_DATA (sheet 4) contains the viral load data in sheet 3 linked to the subjects IDs of sheet 1. 
+
+## Scripts
+The scripts folder contains the main scripts for each separate analysis
+- `SEIR_Covid_Vo.R` is the main script for fitting a SEIR-like model to prevalence data
+- `italy_analysis_script.R` is the main script for estimating the serial interval and the reproduction number. This script requires script `italy_cleaning_data_script.R` to be run beforehand. 
+- `Logistic_regression.R` is the main script to assess the association between swab positivity and age or sex 
+
+## R 
+The R folder contains the functions used by the main scripts. 
+
+`SEIR_Covid_Vo.R` uses the following scripts:
+- clean.R
+- model.R
+- figures.R 
+- tables.R
+
+`italy_analysis_script.R` uses the following scripts:
+- checking_functions.R
+- serial_interval.functions.R 
+- reproduction_number_functions.R 
+- plot_clusters.R 
+- plot_tree.R
+
 
 ##
 
-
-## SEIR model
-Calibrate a SEIR-like compartmental model to prevalence data from Vo', Italy on the number of symptomatic and asymptomatic infections
- during two screenings in February and March 2020.
-Computations might take a long time, decrease the number of implemented models and/or of MCMC iterations.
-
-Main script: `SEIR_Covid_Vo.R`
+## Notes on the fit of the compartmental model to prevalence data
+The code calibrates a compartmental model of SARS-CoV-2 transmission to the prevalence data observed in Vo using the Metropolis-Hastings Markov Chain Monte Carlo (MCMC) method. The computational time depends on the number of MCMC iterations.
 
 ### Input data
-Observed number of negative, pre-symptomatic, symptomatic and asymptomatic individuals after two screening runs of large parts of the population of the municipality of Vo, Italy in February and March 2020
+Number of subjects tested and observed number of pre-symptomatic, symptomatic and asymptomatic study participants testing positive to SARS-CoV-2 at two surveys conducted in the municipality of Vo, Italy in February and March 2020. 
 
-### Descriptions of classes/compartments
+### Descriptions of model compartments
 - `S`    : susceptible individuals
-- `E`    : individuals that are incubating the virus: they are infected, not infectious and tests can not yet detect their infection
-- `TPp`  : individuals with a higher viral load that can be detected with test
-- `I_S`  : infectious individuals that show symptoms
-- `I_A`  : infectious individuals that do not show symptoms
+- `E`    : individuals that are incubating the virus: infected but not yet infectious and with undetectable viral load
+- `TP`  :  individuals with detectable viral load before the onset of symptoms, we assume they are infectious
+- `I_S`  : infectious individuals with detectable viral load who show symptoms
+- `I_A`  : infectious individuals with detectable viral load who do not show symptoms
 - `TP_S` : symptomatic individuals that are no longer infectious but have a detectable viral load
 - `TP_A` : asymptomatic individuals that are no longer infectious but have a detectable viral load
-- `TN`   : individuals that test negative
+- `TN`   : individuals who test negative (undetectable viral load)
 
 ### Description of parameters:
-- `tSeed` : time first case has been infected
-- `time1` : time of first sampling
-- `time2` : time of second sampling
-- `tQ`    : time quarantine started
-- `N`     : population resident in Vo' Euganeo
-- `R0_1`  : basic reproduction number before implementation of quarantine
-- `1 - w` : proportional reduction of the reproduction number due to the implementation of quarantine
-- `seed`  : number of infected individuals at time tSeed that started the epidemic in Vo' Euganeo
-- `p`     : probability of being asymptomatic upon the onset of infectiousness
-- `q`     : relative infectiouness of class TPp w.r.t classes I_A and I_S
+- `tSeed` : time infection is seeded in Vo
+- `time1` : time of first survey
+- `time2` : time of second survey
+- `tQ`    : time lockdown started
+- `N`     : Vo resident population
+- `R0_1`  : basic reproduction number before the implementation of lockdown
+- `1 - w` : proportional reduction of the basic reproduction number due to the lockdown 
+- `seed`  : number of infectious individuals at time tSeed, needed to trigger the epidemic
+- `p`     : proportion of asymptomatic infections (not developing symptoms thoughout the whole infection)
 - `1 / nu`    : average time from infection to virus detectability
 - `1 / delta` : average time from virus detectability to symptoms onset
-- `1 / gamma` : average duration of symptoms
-- `1 / sigma` : average time from virus detectability to recovery
+- `1 / gamma` : average duration of infectiousness since symptom onset 
+- `1 / sigma` : average duration of virus detectability beyond the infectious period 
 
-## Serial interval, effective reproduction number and clusters
-Estimating the serial interval for the whole study period and before and after lockdown, along with the 95% confidence interval using bootstrapping.
-Estimating the effective reproduction number before and after lockdown and the 95% confidence intervals. 
-Code may take a long time to run -- reduce the number of iterations.
-Also contains code for plotting clusters from linelist and contact data. 
+##
 
-### Data cleaning code
-final.data.xlsx - dataset
+## Notes on the serial interval and effective reproduction number estimation
+The code reconstructs transmission chains following the algorithms described in Supplementary Text S1 and S2. The serial interval and the effective reproduction number are estimated from the reconstructed transmission chains. the 95% confidence interval around the central estimates is calculated by bootstrapping. The results presented in the paper were obtained with 10,000 iterations. The computational time depends on the number of iterations used. 
 
-italy_cleaning_data.Rmd - R markdown file that converts the xlsx into the datasets needed for the analysis script. the outputs are the data files listed below
+### Data preparation 
+`italy_cleaning_data_script.R` uses the data file to generate the following outputs: 
+- `all_contacts.rds` lists all contacts between individuals (direct, indirect, imputed household)
+- `all_contacts.tsv` - same as `all_contacts.rds` but in tsv format
+- `direct_contacts.rds` lists all contacts between individuals (direct and imputed household contacts only)
+- `direct_contacts.tsv` - same as `direct_contacts.rds` but in tsv format
+- `linelist.rds` lists all individuals who tested positive for SARS-CoV-2, their ids, household ids, dates of first positive and negative test, last positive and negative test, and date of onset (where available)
+- `linelist.tsv` - same as `linelist.rds` but in tsv format
 
-### Data files
-all_contacts.rds - list of all contacts between individuals (direct, indirect, imputed household)
+These output files are used in `italy_analysis_script.R` to execute the algorithms describes in Supplementary Text S1 and S2 for estimating the central estimates of the serial interval and effective reproduction number and their 95% confidence intervals.
 
-all_contacts.tsv - same as above but tsv format
+### Clusters plot
+`plot_clusters.R` plots the observed transmission clusters as shown in Extended Data Figure 4b. 
 
-direct_contacts.rds - list of all contacts between individuals (direct and imputed household contacts only)
+##
 
-direct_contacts.tsv - same as above but tsv format
+## Notes on logistic regression
+The code in `Logistic_regression.R` does not depend on any external function. It runs logistic regresison on the line list data to test the association between positivity and age and sex.
 
-linelist.rds - list of all individuals who tested positive for SARS-CoV-2, their ids, household ids, dates of first positive and negative test, last positive and negative test, and date of onset (where available)
-
-linelist.tsv - same as above but tsv format
-
-### Source scripts for cluster analysis
-checking_functions.R - performs necessary checks needed in the other two scripts
-
-plot_clusters.R - plots clusters of transmission as seem in extended data figure 4b
-
-plot_tree.R - plots transmission trees - we didn't use this hear due to missing onset dates but have included here 
-
-### Analysis code
-italy_analysis.Rmd - code that executes the algorithms describes in the supplementary information for estimating the serial interval, effective reproduction number and their respective confidence intervals.
-
-Code may run slowly due to the number of iterations (N = 10,000). 
