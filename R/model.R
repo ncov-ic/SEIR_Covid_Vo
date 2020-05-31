@@ -122,7 +122,7 @@ run_mcmc <- function (dir_output, iter_main, idc,
 
       # decide whether to accept new value or not
       Nu <- new_llike - old_llike
-      if (log(runif(1)) < Nu) {
+      if (!is.na(Nu) & log(runif(1)) < Nu) {
         # accept: keep new values
         old_llike <- new_llike
         nr_accepted[parID] <- nr_accepted[parID] + 1
