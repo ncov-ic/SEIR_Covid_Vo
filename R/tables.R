@@ -76,6 +76,6 @@ table_final_size <- function (dir_clean) {
 
   dt
 
-  saveRDS(dt, file.path(dir_clean, "table_TN.rds"))
+  saveRDS(dt, file.path(dir_clean, "table_final_size.rds"))
 
 }
