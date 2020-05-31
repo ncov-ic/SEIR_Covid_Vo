@@ -37,6 +37,7 @@ wrapper_model <- function (iter_main, data,
         break
     }
 
+
     # run mcmc
     run_mcmc(dir_output        = dir_output,
              iter_main         = iter_main,
@@ -99,6 +100,7 @@ run_mcmc <- function (dir_output, iter_main, idc,
       nameID <- names(fitted_params[parID])
       old_value <- fitted_params[parID]
       if (nameID %in% c("inv_nu", "inv_delta")) {
+        # fit inv_nu and inv_delta; gamma dependent variable
         nameotherID <- setdiff(c("inv_nu", "inv_delta"), nameID)
         repeat {
           new_value <- old_value * exp(random_walk_rate[[parID]] * rnorm(1))   # change old value slightly
