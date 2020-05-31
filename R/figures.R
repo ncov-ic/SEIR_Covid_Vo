@@ -238,13 +238,18 @@ fig_incidence <- function (dir_clean, do) {
     filter(mean > 0.01) %>%
     summarise(max(t)) %>%
     pull()
+  time_final <- max(time_final, fixed_parameters["time2"])
   dt <- dt %>%
     filter(t < time_final + 0.5)
 
   # Dates for x axis
+  if (time_final > fixed_parameters["time2"]) {
   my.times <- c(fixed_parameters[c("tSeed", "tQ", "time2")], time_final)
   ## add a date in the last long interval
   my.times <- sort(c(my.times, as.integer(mean(rev(my.times)[1:2]))))
+  } else {
+    my.times <- fixed_parameters[c("tSeed", "tQ", "time2")]
+  }
   my.dates <- get_dates(unname(my.times))
 
   # Plot
@@ -289,7 +294,7 @@ fig_final_size <- function (dir_clean, do) {
     select(time1, time2, tQ, tSeed, N) %>%
     unique() %>%
     unlist()
-  
+
   # select best model in terms of log-likelihood
   if (do == "best_DIC") {
     dt <- dt %>% right_join(get_best_fit(dir_clean))
