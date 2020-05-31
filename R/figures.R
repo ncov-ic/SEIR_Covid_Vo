@@ -1,16 +1,22 @@
 get_dates <- function (my.times) {
 
   # day 0 is the 4th of Fabruary 2020
-  full.dates <- c(paste0(sprintf("%02d", 4:29), "/02"),
-                  paste0(sprintf("%02d", 1:31), "/03"),
-                  paste0(sprintf("%02d", 1:30), "/04"),
-                  paste0(sprintf("%02d", 1:31), "/05"),
-                  paste0(sprintf("%02d", 1:30), "/06"),
-                  paste0(sprintf("%02d", 1:31), "/07"),
-                  paste0(sprintf("%02d", 1:31), "/08"),
-                  paste0(sprintf("%02d", 1:31), "/09"),
-                  paste0(sprintf("%02d", 1:31), "/10"))
-  my.dates <- full.dates[my.times + 1]
+
+  my.times.pos    <- my.times[my.times > -0.5]
+  my.times.nonpos <- my.times[my.times < -0.5]
+
+  dates.pos <- c(paste0(sprintf("%02d", 4:29), "/02"),
+                 paste0(sprintf("%02d", 1:31), "/03"),
+                 paste0(sprintf("%02d", 1:30), "/04"),
+                 paste0(sprintf("%02d", 1:31), "/05"),
+                 paste0(sprintf("%02d", 1:30), "/06"))
+  dates.nonpos <- c(paste0(sprintf("%02d",  3:1), "/02"),
+                    paste0(sprintf("%02d", 31:1), "/01"))
+
+  dates.pos    <- dates.pos[my.times.pos + 1]
+  dates.nonpos <- dates.nonpos[-my.times.nonpos]
+
+  my.dates <- c(rev(dates.nonpos), dates.pos)
 
   return(my.dates)
 
