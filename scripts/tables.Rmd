@@ -18,6 +18,6 @@ knitr::kable(table, row.names = FALSE)
 
 ## Epidemic final size
 ```{r table_final_size, echo = FALSE, results = 'asis'}
-table_TN <- readRDS(file.path(dir_clean, "table_TN.rds"))
+table_TN <- readRDS(file.path(dir_clean, "table_final_size.rds"))
 knitr::kable(table_TN, row.names = FALSE)
 ```

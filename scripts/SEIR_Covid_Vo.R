@@ -137,9 +137,9 @@ fig_chains(dir_clean, dir_figures)
 fig_acceptance_rates(dir_clean, dir_figures)
 
 # Generate tables for publication
-table_fitted(dir_clean, dir_figures, data)
-table_TN(dir_clean, dir_figures, nr_sample)
-rmarkdown::render("tables.Rmd",
+table_fitted(dir_clean, data)
+table_final_size(dir_clean)
+rmarkdown::render("scripts/tables.Rmd",
                   output_dir = dir_figures,
                   params = list(dir_clean = dir_clean))
 

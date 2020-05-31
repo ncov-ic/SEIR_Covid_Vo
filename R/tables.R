@@ -5,7 +5,7 @@ compute_CrI <- function(X) {
          round(quantile(X, 0.975), 2), ")")
 }
 
-table_fitted <- function (dir_clean, dir_figures, data) {
+table_fitted <- function (dir_clean, data) {
 
   # initialise table
   table <- list()
@@ -56,7 +56,8 @@ table_fitted <- function (dir_clean, dir_figures, data) {
 
 }
 
-table_TN <- function (dir_clean, dir_figures, nr_sample) {
+
+table_final_size <- function (dir_clean) {
 
   # compute final size (%)
   dt <- readRDS(file.path(dir_clean, "SEIR.rds")) %>%
