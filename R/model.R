@@ -181,7 +181,8 @@ model_gen <- odin::odin({
   delta <- 1 / inv_delta
 
   # define time-dependent parameters
-  beta  <- if (t < tQ) R0_1 * gamma else w * R0_1 * gamma
+  beta <- if (t < tQ) R0_1 / (inv_delta + 1/gamma) else w * R0_1 / (inv_delta + 1/gamma)
+
 
   # ODE system
   deriv(S)    <- - beta * (q_TPp * TPp + q_A * I_A + I_S) * S/N
