@@ -13,11 +13,6 @@
 
 # Preamble --------------------------------------------------------------------#
 
-# Set working directory if not using R-project
-# setwd("yourpath")
-cat("Please set your working directory to this folder or create an R-project\
- before running code!")
-
 # load packages
 library(odin)
 library(dplyr)
@@ -40,6 +35,7 @@ dir_figures <- "figures"
 dir.create(dir_output,  showWarnings = FALSE)
 dir.create(dir_clean,   showWarnings = FALSE)
 dir.create(dir_figures, showWarnings = FALSE)
+
 
 # Define analysis parameters --------------------------------------------------#
 
