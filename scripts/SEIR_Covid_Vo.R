@@ -28,14 +28,6 @@ source("R/clean.R")
 source("R/figures.R")
 source("R/tables.R")
 
-# create output folders
-dir_output  <- "output"
-dir_clean   <- "clean"
-dir_figures <- "figures"
-dir.create(dir_output,  showWarnings = FALSE)
-dir.create(dir_clean,   showWarnings = FALSE)
-dir.create(dir_figures, showWarnings = FALSE)
-
 
 # Define analysis parameters --------------------------------------------------#
 
@@ -73,16 +65,18 @@ looped_parameters <- data.frame(expand.grid(
   R0_1  = seq(2.1, 2.7, by = 0.3),
   sigma = 1 / seq(2, 12, by = 2)
 ))
+cat("Decide what day you want to seed the infection. 0 = 4th February 2020")
+tSeed <- 0
 
 # Parameters whose value is fixed in the model
 fixed_parameters <- data.frame(
-  tSeed   = 0,
-  time1   = 22,
-  time2   = 32,
-  tQ      = 20,
-  N       = 3275,
-  q_TPp   = 1,
-  q_A     = 1,
+  tSeed = tSeed,
+  time1 = 22,
+  time2 = 32,
+  tQ    = 20,
+  N     = 3275,
+  q_TPp = 1,
+  q_A   = 1,
   generation_time = 7
 )
 
@@ -102,6 +96,15 @@ random_walk_rate <- data.frame(seed      = 0.05,
                                w         = 0.05,
                                inv_nu    = 0.01,
                                inv_delta = 0.01)
+
+
+# Create output folders -------------------------------------------------------#
+dir_output  <- file.path("output",  paste0("tSeed_", fixed_parameters$tSeed))
+dir_clean   <- file.path("clean",   paste0("tSeed_", fixed_parameters$tSeed))
+dir_figures <- file.path("figures", paste0("tSeed_", fixed_parameters$tSeed))
+dir.create(dir_output,  showWarnings = FALSE)
+dir.create(dir_clean,   showWarnings = FALSE)
+dir.create(dir_figures, showWarnings = FALSE)
 
 
 # Run model -------------------------------------------------------------------#
