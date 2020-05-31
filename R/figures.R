@@ -1,5 +1,6 @@
 get_dates <- function (my.times) {
 
+  # day 0 is the 4th of Fabruary 2020
   full.dates <- c(paste0(sprintf("%02d", 4:29), "/02"),
                   paste0(sprintf("%02d", 1:31), "/03"),
                   paste0(sprintf("%02d", 1:30), "/04"),
@@ -9,9 +10,7 @@ get_dates <- function (my.times) {
                   paste0(sprintf("%02d", 1:31), "/08"),
                   paste0(sprintf("%02d", 1:31), "/09"),
                   paste0(sprintf("%02d", 1:31), "/10"))
-  full.dates <- full.dates[1:max(my.times + 1)]
-  my.dates <- character(length = length(full.dates))
-  my.dates[my.times + 1] <- full.dates[my.times + 1]
+  my.dates <- full.dates[my.times + 1]
 
   return(my.dates)
 
