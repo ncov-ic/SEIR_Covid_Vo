@@ -140,6 +140,7 @@ table_fitted(dir_clean, data)
 table_final_size(dir_clean)
 rmarkdown::render("scripts/tables.Rmd",
                   output_dir = dir_figures,
+                  knit_root_dir = getwd(),
                   params = list(dir_clean = dir_clean))
 
 # Generate figures for publication
