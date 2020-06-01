@@ -35,13 +35,13 @@ source("R/tables.R")
 cat("Set the number of iterations.
 As a default, each parameter combo will run three chains in sequence, each of
 which will run for 200,000 iterations. This should take about an hour to run.
-N.B. code can easily be parallelised using mclapply instead of lapply below")
+N.B. code can easily be parallelised using mclapply instead of lapply below.\n")
 mcmc_iterations <- 200000 # number MCMC iterations
 sample_spacing  <- 100    # every how many iterations do we save the MCMC output
 id_chain <- 1:3 # how many chains to run for each job - will be run in sequence
 
 # Parameters to clean results
-cat("Make sure nr_sample < mcmc_iterations/sample_spacing - nr_burnin")
+cat("Make sure nr_sample < mcmc_iterations/sample_spacing - nr_burnin.\n")
 nr_burnin <- 200 # number stored parameter combinations we condiser to be burnin
 nr_sample <- 100 # number stored parameter combinations we sample for plotting
 
@@ -60,12 +60,12 @@ data <- data.frame(Tested         = c(2812, 2343),
 # Define model parameters -----------------------------------------------------#
 
 # Parameters for which we test different values
-cat("Decide what parameter combinations you want to loop through.")
+cat("Decide what parameter combinations you want to loop through.\n")
 looped_parameters <- data.frame(expand.grid(
   R0_1  = seq(2.1, 2.7, by = 0.3),
   sigma = 1 / seq(2, 12, by = 2)
 ))
-cat("Decide what day you want to seed the infection. 0 = 4th February 2020")
+cat("Decide what day you want to seed the infection. 0 = 4th February 2020.\n")
 tSeed <- 0
 
 # Parameters whose value is fixed in the model
@@ -109,7 +109,7 @@ dir.create(dir_figures, recursive = TRUE, showWarnings = FALSE)
 
 # Run model -------------------------------------------------------------------#
 
-cat("N.B. code can be parallelised using parallel::mclapply instead of lapply")
+cat("N.B. code can be parallelised using parallel::mclapply instead of lapply.\n")
 side_effects <- lapply(seq_len(nrow(looped_parameters)),
                        wrapper_model, # main model function
                        data              = data,
