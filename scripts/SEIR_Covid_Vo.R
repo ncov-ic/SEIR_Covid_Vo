@@ -157,10 +157,10 @@ ggsave(filename = file.path(dir_figures, paste0("FigSX.tiff")),
 pA <- fig_prevalence(dir_clean, dir_figures, data, do = "paper_estimate")
 pB <- fig_incidence(dir_clean, do = "paper_estimate")
 pC <- fig_final_size(dir_clean, do = "paper_estimate")
-p <- arrangeGrob(pA, pB, pC,
-                 layout_matrix = matrix(c(1,1,2,3), byrow = TRUE, ncol = 2))
 ggsave(filename = file.path(dir_figures, "Fig3paper_estimate.tiff"),
-       plot = p, device = "tiff",
+       plot = arrangeGrob(pA, pB, pC,
+                          layout_matrix = matrix(c(1,1,2,3), byrow = TRUE, ncol = 2)),
+       device = "tiff",
        width = 89, height = 80,
        units = "mm", dpi = 300,
        type = "cairo", compression = "lzw")
