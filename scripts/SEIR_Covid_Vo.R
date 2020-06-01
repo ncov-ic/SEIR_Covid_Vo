@@ -102,9 +102,9 @@ random_walk_rate <- data.frame(seed      = 0.05,
 dir_output  <- file.path("output",  paste0("tSeed_", fixed_parameters$tSeed))
 dir_clean   <- file.path("clean",   paste0("tSeed_", fixed_parameters$tSeed))
 dir_figures <- file.path("figures", paste0("tSeed_", fixed_parameters$tSeed))
-dir.create(dir_output,  showWarnings = FALSE)
-dir.create(dir_clean,   showWarnings = FALSE)
-dir.create(dir_figures, showWarnings = FALSE)
+dir.create(dir_output,  recursive = TRUE, showWarnings = FALSE)
+dir.create(dir_clean,   recursive = TRUE, showWarnings = FALSE)
+dir.create(dir_figures, recursive = TRUE, showWarnings = FALSE)
 
 
 # Run model -------------------------------------------------------------------#
