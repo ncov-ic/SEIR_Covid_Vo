@@ -1,5 +1,5 @@
 ## set number of iterations - used 10,000 for publication
-iteration_value <- 100
+iteration_value <- 10000
 
 ## packages needed
 list_of_packages <- c("tidyr",
