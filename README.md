@@ -41,8 +41,7 @@ The R folder contains the functions used by the main scripts.
 ##
 
 ## Notes on the fit of the compartmental model to prevalence data
-The code calibrates a compartmental model of SARS-CoV-2 transmission to the prevalence data observed in Vo using the Metropolis-Hastings Markov Chain Monte Carlo (MCMC) method. The computational time depends on the number of MCMC iterations and chains.
-The results presented in the paper were obtained running three MCMC chains of 200'000 iterations each for all of the presented parameter combinations. After removing burnin (first 10% of iterations), we present results from the chain performing best in terms of average log-likelihood.
+The code calibrates a compartmental model of SARS-CoV-2 transmission to the prevalence data observed in Vo using the Metropolis-Hastings Markov Chain Monte Carlo (MCMC) method. The computational time depends on the number of MCMC iterations and chains. Convergence was assessed from three MCMC chains starting at different initial points, each of 200,000 iterations, after removing the first 200 iterations (burnin), for all parameter combinations. 
 
 ### Input data
 Number of subjects tested and observed number of pre-symptomatic, symptomatic and asymptomatic study participants testing positive to SARS-CoV-2 at two surveys conducted in the municipality of Vo, Italy in February and March 2020. 
