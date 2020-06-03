@@ -1,17 +1,22 @@
 get_dates <- function (my.times) {
 
-  full.dates <- c(paste0(sprintf("%02d", 4:29), "/02"),
-                  paste0(sprintf("%02d", 1:31), "/03"),
-                  paste0(sprintf("%02d", 1:30), "/04"),
-                  paste0(sprintf("%02d", 1:31), "/05"),
-                  paste0(sprintf("%02d", 1:30), "/06"),
-                  paste0(sprintf("%02d", 1:31), "/07"),
-                  paste0(sprintf("%02d", 1:31), "/08"),
-                  paste0(sprintf("%02d", 1:31), "/09"),
-                  paste0(sprintf("%02d", 1:31), "/10"))
-  full.dates <- full.dates[1:max(my.times + 1)]
-  my.dates <- character(length = length(full.dates))
-  my.dates[my.times + 1] <- full.dates[my.times + 1]
+  # day 0 is the 4th of Fabruary 2020
+
+  my.times.pos    <- my.times[my.times > -0.5]
+  my.times.nonpos <- my.times[my.times < -0.5]
+
+  dates.pos <- c(paste0(sprintf("%02d", 4:29), "/02"),
+                 paste0(sprintf("%02d", 1:31), "/03"),
+                 paste0(sprintf("%02d", 1:30), "/04"),
+                 paste0(sprintf("%02d", 1:31), "/05"),
+                 paste0(sprintf("%02d", 1:30), "/06"))
+  dates.nonpos <- c(paste0(sprintf("%02d",  3:1), "/02"),
+                    paste0(sprintf("%02d", 31:1), "/01"))
+
+  dates.pos    <- dates.pos[my.times.pos + 1]
+  dates.nonpos <- dates.nonpos[-my.times.nonpos]
+
+  my.dates <- c(rev(dates.nonpos), dates.pos)
 
   return(my.dates)
 
@@ -239,13 +244,18 @@ fig_incidence <- function (dir_clean, do) {
     filter(mean > 0.01) %>%
     summarise(max(t)) %>%
     pull()
+  time_final <- max(time_final, fixed_parameters["time2"])
   dt <- dt %>%
     filter(t < time_final + 0.5)
 
   # Dates for x axis
+  if (time_final > fixed_parameters["time2"]) {
   my.times <- c(fixed_parameters[c("tSeed", "tQ", "time2")], time_final)
   ## add a date in the last long interval
   my.times <- sort(c(my.times, as.integer(mean(rev(my.times)[1:2]))))
+  } else {
+    my.times <- fixed_parameters[c("tSeed", "tQ", "time2")]
+  }
   my.dates <- get_dates(unname(my.times))
 
   # Plot
@@ -290,7 +300,7 @@ fig_final_size <- function (dir_clean, do) {
     select(time1, time2, tQ, tSeed, N) %>%
     unique() %>%
     unlist()
-  
+
   # select best model in terms of log-likelihood
   if (do == "best_DIC") {
     dt <- dt %>% right_join(get_best_fit(dir_clean))

@@ -13,11 +13,6 @@
 
 # Preamble --------------------------------------------------------------------#
 
-# Set working directory if not using R-project
-# setwd("yourpath")
-cat("Please set your working directory to this folder or create an R-project\
- before running code!")
-
 # load packages
 library(odin)
 library(dplyr)
@@ -33,13 +28,6 @@ source("R/clean.R")
 source("R/figures.R")
 source("R/tables.R")
 
-# create output folders
-dir_output  <- "output"
-dir_clean   <- "clean"
-dir_figures <- "figures"
-dir.create(dir_output,  showWarnings = FALSE)
-dir.create(dir_clean,   showWarnings = FALSE)
-dir.create(dir_figures, showWarnings = FALSE)
 
 # Define analysis parameters --------------------------------------------------#
 
@@ -47,13 +35,13 @@ dir.create(dir_figures, showWarnings = FALSE)
 cat("Set the number of iterations.
 As a default, each parameter combo will run three chains in sequence, each of
 which will run for 200,000 iterations. This should take about an hour to run.
-N.B. code can easily be parallelised using mclapply instead of lapply below")
+N.B. code can easily be parallelised using mclapply instead of lapply below.\n")
 mcmc_iterations <- 200000 # number MCMC iterations
 sample_spacing  <- 100    # every how many iterations do we save the MCMC output
 id_chain <- 1:3 # how many chains to run for each job - will be run in sequence
 
 # Parameters to clean results
-cat("Make sure nr_sample < mcmc_iterations/sample_spacing - nr_burnin")
+cat("Make sure nr_sample < mcmc_iterations/sample_spacing - nr_burnin.\n")
 nr_burnin <- 200 # number stored parameter combinations we condiser to be burnin
 nr_sample <- 100 # number stored parameter combinations we sample for plotting
 
@@ -72,21 +60,23 @@ data <- data.frame(Tested         = c(2812, 2343),
 # Define model parameters -----------------------------------------------------#
 
 # Parameters for which we test different values
-cat("Decide what parameter combinations you want to loop through.")
+cat("Decide what parameter combinations you want to loop through.\n")
 looped_parameters <- data.frame(expand.grid(
   R0_1  = seq(2.1, 2.7, by = 0.3),
   sigma = 1 / seq(2, 12, by = 2)
 ))
+cat("Decide what day you want to seed the infection. 0 = 4th February 2020.\n")
+tSeed <- 0
 
 # Parameters whose value is fixed in the model
 fixed_parameters <- data.frame(
-  tSeed   = 0,
-  time1   = 22,
-  time2   = 32,
-  tQ      = 20,
-  N       = 3275,
-  q_TPp   = 1,
-  q_A     = 1,
+  tSeed = tSeed,
+  time1 = 22,
+  time2 = 32,
+  tQ    = 20,
+  N     = 3275,
+  q_TPp = 1,
+  q_A   = 1,
   generation_time = 7
 )
 
@@ -108,9 +98,18 @@ random_walk_rate <- data.frame(seed      = 0.05,
                                inv_delta = 0.01)
 
 
+# Create output folders -------------------------------------------------------#
+dir_output  <- file.path("output",  paste0("tSeed_", fixed_parameters$tSeed))
+dir_clean   <- file.path("clean",   paste0("tSeed_", fixed_parameters$tSeed))
+dir_figures <- file.path("figures", paste0("tSeed_", fixed_parameters$tSeed))
+dir.create(dir_output,  recursive = TRUE, showWarnings = FALSE)
+dir.create(dir_clean,   recursive = TRUE, showWarnings = FALSE)
+dir.create(dir_figures, recursive = TRUE, showWarnings = FALSE)
+
+
 # Run model -------------------------------------------------------------------#
 
-cat("N.B. code can be parallelised using parallel::mclapply instead of lapply")
+cat("N.B. code can be parallelised using parallel::mclapply instead of lapply.\n")
 side_effects <- lapply(seq_len(nrow(looped_parameters)),
                        wrapper_model, # main model function
                        data              = data,
@@ -137,10 +136,11 @@ fig_chains(dir_clean, dir_figures)
 fig_acceptance_rates(dir_clean, dir_figures)
 
 # Generate tables for publication
-table_fitted(dir_clean, dir_figures, data)
-table_TN(dir_clean, dir_figures, nr_sample)
-rmarkdown::render("tables.Rmd",
+table_fitted(dir_clean, data)
+table_final_size(dir_clean)
+rmarkdown::render("scripts/tables.Rmd",
                   output_dir = dir_figures,
+                  knit_root_dir = getwd(),
                   params = list(dir_clean = dir_clean))
 
 # Generate figures for publication
@@ -157,10 +157,10 @@ ggsave(filename = file.path(dir_figures, paste0("FigSX.tiff")),
 pA <- fig_prevalence(dir_clean, dir_figures, data, do = "paper_estimate")
 pB <- fig_incidence(dir_clean, do = "paper_estimate")
 pC <- fig_final_size(dir_clean, do = "paper_estimate")
-p <- arrangeGrob(pA, pB, pC,
-                 layout_matrix = matrix(c(1,1,2,3), byrow = TRUE, ncol = 2))
 ggsave(filename = file.path(dir_figures, "Fig3paper_estimate.tiff"),
-       plot = p, device = "tiff",
+       plot = arrangeGrob(pA, pB, pC,
+                          layout_matrix = matrix(c(1,1,2,3), byrow = TRUE, ncol = 2)),
+       device = "tiff",
        width = 89, height = 80,
        units = "mm", dpi = 300,
        type = "cairo", compression = "lzw")

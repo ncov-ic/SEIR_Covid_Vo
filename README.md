@@ -3,10 +3,10 @@ Lavezzo et. al., 2020, Suppression of COVID-19 outbreak in the municipality of V
 
 # Repository structure
 This repository contains 
-- the data collected in Vo to assess COVID-19 prevalence at two sequenatial surveys conducted in February and March 2020;
+- the data collected in Vo to assess COVID-19 prevalence at two subsequent surveys conducted in February and March 2020;
 - the code used to fit a compartmental SEIR-like model to the observed prevalence data; 
 - the code used to estimate the serial interval and reproduction number from a reconstruction of the transmission chains; 
-- the code used to assess the association between COVID-19 infection and age or sex via  logistic regression. 
+- the code used to assess the association between COVID-19 infection and age or sex via logistic regression. 
 
 ## Data
 The data folder contains the file `anonymised_data_public_final.xlsx`, which has four sheets:
@@ -25,8 +25,8 @@ The scripts folder contains the main scripts for each separate analysis
 The R folder contains the functions used by the main scripts. 
 
 `SEIR_Covid_Vo.R` uses the following scripts:
-- clean.R
 - model.R
+- clean.R
 - figures.R 
 - tables.R
 
@@ -41,7 +41,8 @@ The R folder contains the functions used by the main scripts.
 ##
 
 ## Notes on the fit of the compartmental model to prevalence data
-The code calibrates a compartmental model of SARS-CoV-2 transmission to the prevalence data observed in Vo using the Metropolis-Hastings Markov Chain Monte Carlo (MCMC) method. The computational time depends on the number of MCMC iterations.
+The code calibrates a compartmental model of SARS-CoV-2 transmission to the prevalence data observed in Vo using the Metropolis-Hastings Markov Chain Monte Carlo (MCMC) method. The computational time depends on the number of MCMC iterations and chains.
+The results presented in the paper were obtained running three MCMC chains of 200'000 iterations each for all of the presented parameter combinations. After removing burnin (first 10% of iterations), we present results from the chain performing best in terms of average log-likelihood.
 
 ### Input data
 Number of subjects tested and observed number of pre-symptomatic, symptomatic and asymptomatic study participants testing positive to SARS-CoV-2 at two surveys conducted in the municipality of Vo, Italy in February and March 2020. 
@@ -65,16 +66,16 @@ Number of subjects tested and observed number of pre-symptomatic, symptomatic an
 - `R0_1`  : basic reproduction number before the implementation of lockdown
 - `1 - w` : proportional reduction of the basic reproduction number due to the lockdown 
 - `seed`  : number of infectious individuals at time tSeed, needed to trigger the epidemic
-- `p`     : proportion of asymptomatic infections (not developing symptoms thoughout the whole infection)
+- `p`     : proportion of asymptomatic infections (not developing symptoms throughout the whole infection)
 - `1 / nu`    : average time from infection to virus detectability
-- `1 / delta` : average time from virus detectability to symptoms onset
-- `1 / gamma` : average duration of infectiousness since symptom onset 
+- `1 / delta` : average time from virus detectability to symptom onset
+- `1 / gamma` : average duration of infectiousness from time of symptom onset 
 - `1 / sigma` : average duration of virus detectability beyond the infectious period 
 
 ##
 
 ## Notes on the serial interval and effective reproduction number estimation
-The code reconstructs transmission chains following the algorithms described in Supplementary Text S1 and S2. The serial interval and the effective reproduction number are estimated from the reconstructed transmission chains. the 95% confidence interval around the central estimates is calculated by bootstrapping. The results presented in the paper were obtained with 10,000 iterations. The computational time depends on the number of iterations used. 
+The code reconstructs transmission chains following the algorithms described in Supplementary Text S1 and S2. The serial interval and the effective reproduction number are estimated from the reconstructed transmission chains. The 95% confidence interval around the central estimates is calculated by bootstrapping. The results presented in the paper were obtained with 10,000 iterations. The computational time depends on the number of iterations used. 
 
 ### Data preparation 
 `italy_cleaning_data_script.R` uses the data file to generate the following outputs: 

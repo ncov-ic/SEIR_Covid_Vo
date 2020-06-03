@@ -37,6 +37,7 @@ wrapper_model <- function (iter_main, data,
         break
     }
 
+
     # run mcmc
     run_mcmc(dir_output        = dir_output,
              iter_main         = iter_main,
@@ -99,6 +100,7 @@ run_mcmc <- function (dir_output, iter_main, idc,
       nameID <- names(fitted_params[parID])
       old_value <- fitted_params[parID]
       if (nameID %in% c("inv_nu", "inv_delta")) {
+        # fit inv_nu and inv_delta; gamma dependent variable
         nameotherID <- setdiff(c("inv_nu", "inv_delta"), nameID)
         repeat {
           new_value <- old_value * exp(random_walk_rate[[parID]] * rnorm(1))   # change old value slightly
@@ -122,7 +124,7 @@ run_mcmc <- function (dir_output, iter_main, idc,
 
       # decide whether to accept new value or not
       Nu <- new_llike - old_llike
-      if (log(runif(1)) < Nu) {
+      if (!is.na(Nu) & log(runif(1)) < Nu) {
         # accept: keep new values
         old_llike <- new_llike
         nr_accepted[parID] <- nr_accepted[parID] + 1
@@ -181,7 +183,8 @@ model_gen <- odin::odin({
   delta <- 1 / inv_delta
 
   # define time-dependent parameters
-  beta  <- if (t < tQ) R0_1 * gamma else w * R0_1 * gamma
+  beta <- if (t < tQ) R0_1 / (inv_delta + 1/gamma) else w * R0_1 / (inv_delta + 1/gamma)
+
 
   # ODE system
   deriv(S)    <- - beta * (q_TPp * TPp + q_A * I_A + I_S) * S/N
