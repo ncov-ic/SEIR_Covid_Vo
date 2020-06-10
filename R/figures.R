@@ -291,42 +291,38 @@ fig_incidence <- function (dir_clean, do) {
 
 }
 
+filter_by_DIC <- function (dir_clean) {
+
+  # get best in terms of DIC
+  readRDS(file.path(dir_clean, "table.rds")) %>%
+    mutate(`1/sigma` = as.integer(`1/sigma`)) %>%
+    filter(DIC.median < 36.42) %>%
+    select(R0_1, `1/sigma`)
+
+}
+
 fig_final_size <- function (dir_clean, do) {
 
-  # get compartment counts
-  dt <- readRDS(file.path(dir_clean, "SEIR.rds"))
-  fixed_parameters <- dt %>%
-    select(time1, time2, tQ, tSeed, N) %>%
-    unique() %>%
-    unlist()
-
-  # select best model in terms of log-likelihood
-  if (do == "best_DIC") {
-    dt <- dt %>% right_join(get_best_fit(dir_clean))
-  } else if (do == "paper_estimate") {
-    dt <- dt %>% filter(R0_1 == 2.4 & 1/sigma == 4)
-  }
-
-  # clean data
-  dt <- dt %>%
-    # only keep last time step
-    filter(t == max(t)) %>%
-    # summarise compartments of interest
-    mutate(final_size = 100 * (fixed_parameters["N"] - S) / fixed_parameters["N"]) %>%
-    # compute mean and 95% CrI
+  dt <- readRDS(file.path(dir_clean, "table_TN.rds")) %>%
+    mutate(`1/sigma` = as.integer(`1/sigma`)) %>%
+    right_join(filter_by_DIC(dir_clean)) %>%
+    mutate(No  = as.numeric(sub(" .*", "", `No lockdown`)),
+           Yes = as.numeric(sub(" .*", "", `Yes lockdown`))) %>%
+    gather(Lockdown, means, No:Yes) %>%
+    # compute mean, min and max
     group_by(Lockdown) %>%
-    summarise(mean = mean(final_size),
-              low  = quantile(final_size, probs = 0.025),
-              high = quantile(final_size, probs = 0.975)) %>%
+    summarise(mean = mean(means),
+              min  = min(means),
+              max  = max(means)) %>%
     ungroup()
 
   # Plot
   p <- ggplot(data = dt, aes(x = Lockdown, y = mean, fill = Lockdown)) +
     # model mean and 95% CrI
     geom_bar(stat = "identity") +
-    geom_errorbar(aes(ymin = low, ymax = high), width = 0.2) +
+    geom_errorbar(aes(ymin = min, ymax = max), width = 0.2) +
     # axes
-    scale_y_continuous(name = "Epidemic final size (%)",
+    scale_y_continuous(name = "Epidemic final size (%)    ",
                        limits = c(0, 98),
                        breaks = seq(0L, 100L, by = 25L)) +
     # colour palette and legend
