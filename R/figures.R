@@ -84,7 +84,6 @@ get_best_fit <- function (dir_clean) {
 
   # get best in terms of DIC
   readRDS(file.path(dir_clean, "table.rds")) %>%
-    filter(R0_1 < 2.8 & `1/sigma` < 13) %>%
     mutate(sigma = 1/as.numeric(`1/sigma`)) %>%
     filter(DIC == min(DIC, na.rm = TRUE)) %>%
     select(R0_1, sigma)
@@ -188,7 +187,7 @@ fig_prevalence <- function (dir_clean, dir_figures, data, do) {
           legend.margin = margin(0, 0, 0, 0),
           legend.box.margin = margin(-8, 0, 0, 0),
           # Nature requirement:
-          text = element_text(size = 7, family = "sans"))
+          text = element_text(size = 8, family = "sans"))
 
   # faceting
   if (do != "all") {
@@ -250,9 +249,9 @@ fig_incidence <- function (dir_clean, do) {
 
   # Dates for x axis
   if (time_final > fixed_parameters["time2"]) {
-  my.times <- c(fixed_parameters[c("tSeed", "tQ", "time2")], time_final)
-  ## add a date in the last long interval
-  my.times <- sort(c(my.times, as.integer(mean(rev(my.times)[1:2]))))
+    my.times <- c(fixed_parameters[c("tSeed", "tQ", "time2")], time_final)
+    ## add dates in the last long interval
+    my.times <- sort(c(my.times, 42, 56, 70))
   } else {
     my.times <- fixed_parameters[c("tSeed", "tQ", "time2")]
   }
@@ -282,7 +281,7 @@ fig_incidence <- function (dir_clean, do) {
           legend.margin = margin(0, 0, 0, 0),
           legend.box.margin = margin(-8, 0, 0, 0),
           # Nature requirement:
-          text = element_text(size = 7, family = "sans"),
+          text = element_text(size = 8, family = "sans"),
           plot.tag = element_text(size = 8, face = "bold", family = "sans")) +
     labs(tag = "b")
 
@@ -336,7 +335,7 @@ fig_final_size <- function (dir_clean, do) {
     theme(legend.position = "right",
           panel.grid = element_blank(),
           # Nature requirement:
-          text = element_text(size = 7, family = "sans"),
+          text = element_text(size = 8, family = "sans"),
           plot.tag = element_text(size = 8, face = "bold", family = "sans")) +
     labs(tag = "c")
 
