@@ -1,5 +1,5 @@
 Please cite as:
-Lavezzo et. al., 2020, Suppression of COVID-19 outbreak in the municipality of Vo, Italy, medRxiv, doi: 10.1101/2020.04.17.20053157
+Lavezzo, E., Franchin, E., Ciavarella, C. et al. Suppression of a SARS-CoV-2 outbreak in the Italian municipality of Vo’. Nature (2020). https://doi.org/10.1038/s41586-020-2488-1
 
 # Repository structure
 This repository contains 
