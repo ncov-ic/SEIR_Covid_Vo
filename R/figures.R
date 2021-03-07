@@ -296,14 +296,14 @@ filter_by_DIC <- function (dir_clean) {
   # get best in terms of DIC
   readRDS(file.path(dir_clean, "table.rds")) %>%
     mutate(`1/sigma` = as.integer(`1/sigma`)) %>%
-    filter(DIC.median < 36.42) %>%
+    filter(DIC < 36.42) %>%
     select(R0_1, `1/sigma`)
 
 }
 
 fig_final_size <- function (dir_clean, do) {
 
-  dt <- readRDS(file.path(dir_clean, "table_TN.rds")) %>%
+  dt <- readRDS(file.path(dir_clean, "table_final_size.rds")) %>%
     mutate(`1/sigma` = as.integer(`1/sigma`)) %>%
     right_join(filter_by_DIC(dir_clean)) %>%
     mutate(No  = as.numeric(sub(" .*", "", `No lockdown`)),
